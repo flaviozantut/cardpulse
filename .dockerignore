@@ -1,0 +1,14 @@
+target/
+.git/
+.github/
+.claude/
+*.md
+!README.md
+.env
+.env.local
+.dockerignore
+docker-compose.yml
+.gitignore
+tests/
+docs/
+*.log

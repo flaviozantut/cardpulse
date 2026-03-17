@@ -1,0 +1,79 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cardpulse-db
+    environment:
+      POSTGRES_USER: cardpulse
+      POSTGRES_PASSWORD: cardpulse
+      POSTGRES_DB: cardpulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cardpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  db-test:
+    image: postgres:16-alpine
+    container_name: cardpulse-db-test
+    environment:
+      POSTGRES_USER: cardpulse
+      POSTGRES_PASSWORD: cardpulse
+      POSTGRES_DB: cardpulse_test
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cardpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: cardpulse-api
+    environment:
+      DATABASE_URL: postgres://cardpulse:cardpulse@db:5432/cardpulse
+      DATABASE_URL_TEST: postgres://cardpulse:cardpulse@db-test:5432/cardpulse_test
+      JWT_SECRET: dev-secret-change-in-production-minimum-64-chars-long-for-security
+      JWT_EXPIRATION_HOURS: "24"
+      RUST_LOG: info,cardpulse_api=debug
+      HOST: 0.0.0.0
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/app/target
+    depends_on:
+      db:
+        condition: service_healthy
+      db-test:
+        condition: service_healthy
+    command: cargo watch -x run
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: cardpulse-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@cardpulse.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - tools
+
+volumes:
+  pgdata:
+  cargo-cache:
+  target-cache:
