@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  DATABASE_URL: postgres://cardpulse:cardpulse@localhost:5432/cardpulse
+  DATABASE_URL_TEST: postgres://cardpulse:cardpulse@localhost:5433/cardpulse_test
+  JWT_SECRET: ci-secret-minimum-64-chars-long-for-hs256-validation-in-tests-ok
+  JWT_EXPIRATION_HOURS: "24"
+  RUST_LOG: info
+
+jobs:
+  ci:
+    name: fmt + lint + test
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cardpulse
+          POSTGRES_PASSWORD: cardpulse
+          POSTGRES_DB: cardpulse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cardpulse"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      db-test:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cardpulse
+          POSTGRES_PASSWORD: cardpulse
+          POSTGRES_DB: cardpulse_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U cardpulse"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Lint (clippy)
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        run: cargo test
