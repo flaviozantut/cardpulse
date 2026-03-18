@@ -11,6 +11,7 @@ use axum::{
 };
 use serde_json::json;
 use thiserror::Error;
+use tracing::error;
 
 /// All possible errors returned by the API.
 #[derive(Debug, Error)]
@@ -63,10 +64,17 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status_code();
+        let message = match &self {
+            AppError::InternalError(detail) => {
+                error!("Internal server error: {detail}");
+                "Internal server error".to_string()
+            }
+            _ => self.to_string(),
+        };
         let body = json!({
             "error": {
                 "code": self.error_code(),
-                "message": self.to_string()
+                "message": message
             }
         });
         (status, Json(body)).into_response()
@@ -77,7 +85,6 @@ impl IntoResponse for AppError {
 mod tests {
     use super::*;
     use axum::body::to_bytes;
-    use axum::response::IntoResponse;
 
     async fn parse_response(err: AppError) -> (StatusCode, serde_json::Value) {
         let response = err.into_response();
@@ -98,8 +105,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unauthorized_returns_401_with_correct_body() {
-        let (status, body) =
-            parse_response(AppError::Unauthorized("invalid token".into())).await;
+        let (status, body) = parse_response(AppError::Unauthorized("invalid token".into())).await;
 
         assert_eq!(status, StatusCode::UNAUTHORIZED);
         assert_eq!(body["error"]["code"], "UNAUTHORIZED");
@@ -129,10 +135,10 @@ mod tests {
     #[tokio::test]
     async fn test_internal_error_returns_500_with_correct_body() {
         let (status, body) =
-            parse_response(AppError::InternalError("something went wrong".into())).await;
+            parse_response(AppError::InternalError("db connection failed".into())).await;
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body["error"]["code"], "INTERNAL_ERROR");
-        assert_eq!(body["error"]["message"], "something went wrong");
+        assert_eq!(body["error"]["message"], "Internal server error");
     }
 }
