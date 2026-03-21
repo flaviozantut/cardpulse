@@ -1,16 +1,15 @@
 # ============================================================
 # Stage 1: Development (with hot reload via cargo-watch)
 # ============================================================
-FROM rust:1.88-slim AS development
+FROM rust:1.82-slim AS development
 
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-RUN cargo install cargo-watch \
-    && cargo install sqlx-cli --no-default-features --features postgres
+RUN cargo install cargo-watch sqlx-cli --no-default-features --features postgres
 
 WORKDIR /app
 COPY . .
@@ -21,9 +20,9 @@ CMD ["cargo", "watch", "-x", "run"]
 # ============================================================
 # Stage 2: Builder (optimized release build)
 # ============================================================
-FROM rust:1.88-slim AS builder
+FROM rust:1.82-slim AS builder
 
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
