@@ -4,4 +4,6 @@
 //! entrypoint (`main.rs`) and by integration tests.
 
 pub mod error;
+pub mod handlers;
 pub mod models;
+pub mod router;
