@@ -4,3 +4,4 @@
 //! entrypoint (`main.rs`) and by integration tests.
 
 pub mod error;
+pub mod models;
