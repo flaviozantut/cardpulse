@@ -26,8 +26,8 @@ pub fn hash_password(password: &str) -> Result<String, AppError> {
 /// # Errors
 /// Returns [`AppError::InternalError`] if the hash string is malformed.
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
-    let parsed =
-        PasswordHash::new(hash).map_err(|e| AppError::InternalError(format!("invalid hash: {e}")))?;
+    let parsed = PasswordHash::new(hash)
+        .map_err(|e| AppError::InternalError(format!("invalid hash: {e}")))?;
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())

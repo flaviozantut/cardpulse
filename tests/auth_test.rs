@@ -19,7 +19,10 @@ async fn test_register_with_valid_payload_returns_201() {
     let server = common::spawn_test_app().await;
 
     // Act
-    let response = server.post("/auth/register").json(&register_payload()).await;
+    let response = server
+        .post("/auth/register")
+        .json(&register_payload())
+        .await;
 
     // Assert
     assert_eq!(
