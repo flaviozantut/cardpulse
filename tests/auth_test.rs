@@ -2,10 +2,16 @@ mod common;
 
 use axum::http::StatusCode;
 use serde_json::json;
+use uuid::Uuid;
 
-fn register_payload() -> serde_json::Value {
+/// Generates a unique email for each test run to avoid conflicts between runs.
+fn unique_email(prefix: &str) -> String {
+    format!("{prefix}+{}@example.com", Uuid::new_v4())
+}
+
+fn register_payload_for(email: &str) -> serde_json::Value {
     json!({
-        "email": "alice@example.com",
+        "email": email,
         "password": "supersecret123",
         "wrapped_dek": "aGVsbG8gd29ybGQ=",
         "dek_salt": "c2FsdHNhbHQ=",
@@ -13,15 +19,18 @@ fn register_payload() -> serde_json::Value {
     })
 }
 
+// ── Register tests ─────────────────────────────────────────────────────────
+
 #[tokio::test]
 async fn test_register_with_valid_payload_returns_201() {
     // Arrange
     let server = common::spawn_test_app().await;
+    let email = unique_email("alice");
 
     // Act
     let response = server
         .post("/auth/register")
-        .json(&register_payload())
+        .json(&register_payload_for(&email))
         .await;
 
     // Assert
@@ -41,13 +50,8 @@ async fn test_register_with_valid_payload_returns_201() {
 async fn test_register_with_duplicate_email_returns_409() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let payload = json!({
-        "email": "bob@example.com",
-        "password": "supersecret123",
-        "wrapped_dek": "aGVsbG8gd29ybGQ=",
-        "dek_salt": "c2FsdHNhbHQ=",
-        "dek_params": "{\"m\":65536,\"t\":3,\"p\":1}"
-    });
+    let email = unique_email("bob");
+    let payload = register_payload_for(&email);
 
     // First registration
     server.post("/auth/register").json(&payload).await;
@@ -73,7 +77,7 @@ async fn test_register_with_missing_fields_returns_422() {
     // Act — payload missing required fields
     let response = server
         .post("/auth/register")
-        .json(&json!({ "email": "carol@example.com" }))
+        .json(&json!({ "email": unique_email("carol") }))
         .await;
 
     // Assert
@@ -82,4 +86,106 @@ async fn test_register_with_missing_fields_returns_422() {
         StatusCode::UNPROCESSABLE_ENTITY,
         "Expected 422 for missing required fields"
     );
+}
+
+// ── Login tests ────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_login_with_valid_credentials_returns_200_with_token_and_dek() {
+    // Arrange — register first, then login
+    let server = common::spawn_test_app().await;
+    let email = unique_email("dave");
+    server
+        .post("/auth/register")
+        .json(&json!({
+            "email": email,
+            "password": "mypassword",
+            "wrapped_dek": "aGVsbG8gd29ybGQ=",
+            "dek_salt": "c2FsdHNhbHQ=",
+            "dek_params": "{\"m\":65536}"
+        }))
+        .await;
+
+    // Act
+    let response = server
+        .post("/auth/login")
+        .json(&json!({ "email": email, "password": "mypassword" }))
+        .await;
+
+    // Assert
+    assert_eq!(
+        response.status_code(),
+        StatusCode::OK,
+        "Expected 200 OK for valid credentials"
+    );
+    let body: serde_json::Value = response.json();
+    assert!(
+        body["data"]["token"].is_string(),
+        "Response must include a JWT token"
+    );
+    assert!(
+        body["data"]["wrapped_dek"].is_string(),
+        "Response must include wrapped_dek"
+    );
+    assert!(
+        body["data"]["dek_salt"].is_string(),
+        "Response must include dek_salt"
+    );
+    assert!(
+        body["data"]["dek_params"].is_string(),
+        "Response must include dek_params"
+    );
+}
+
+#[tokio::test]
+async fn test_login_with_wrong_password_returns_401() {
+    // Arrange
+    let server = common::spawn_test_app().await;
+    let email = unique_email("eve");
+    server
+        .post("/auth/register")
+        .json(&json!({
+            "email": email,
+            "password": "correctpassword",
+            "wrapped_dek": "aGVsbG8gd29ybGQ=",
+            "dek_salt": "c2FsdHNhbHQ=",
+            "dek_params": "{\"m\":65536}"
+        }))
+        .await;
+
+    // Act
+    let response = server
+        .post("/auth/login")
+        .json(&json!({ "email": email, "password": "wrongpassword" }))
+        .await;
+
+    // Assert
+    assert_eq!(
+        response.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "Expected 401 for wrong password"
+    );
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["error"]["code"], "UNAUTHORIZED");
+}
+
+#[tokio::test]
+async fn test_login_with_nonexistent_user_returns_401() {
+    // Arrange
+    let server = common::spawn_test_app().await;
+
+    // Act
+    let response = server
+        .post("/auth/login")
+        .json(&json!({ "email": unique_email("ghost"), "password": "whatever" }))
+        .await;
+
+    // Assert
+    assert_eq!(
+        response.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "Expected 401 for nonexistent user (must not leak existence)"
+    );
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["error"]["code"], "UNAUTHORIZED");
 }

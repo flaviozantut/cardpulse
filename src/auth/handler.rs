@@ -2,13 +2,18 @@
 //!
 //! # Endpoints
 //! - `POST /auth/register` — create a new user account
+//! - `POST /auth/login`    — verify credentials, return JWT + wrapped DEK
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
-    auth::password::hash_password,
+    auth::{
+        jwt::create_token,
+        password::{hash_password, verify_password},
+    },
     error::AppError,
     models::user::CreateUser,
     repositories::{
@@ -54,4 +59,52 @@ pub async fn register(
         .await?;
 
     Ok((StatusCode::CREATED, Json(json!({ "data": { "id": id } }))))
+}
+
+/// Request body for `POST /auth/login`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+/// `POST /auth/login` — authenticate and return a JWT with the wrapped DEK.
+///
+/// Returns the same 401 for both wrong password and unknown email to avoid
+/// leaking whether an address is registered.
+///
+/// # Responses
+/// - `200 OK` — `{ "data": { "token", "wrapped_dek", "dek_salt", "dek_params" } }`
+/// - `401 Unauthorized` — invalid credentials
+/// - `422 Unprocessable Entity` — missing fields
+pub async fn login(
+    State(state): State<AppState>,
+    Json(payload): Json<LoginRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let repo = PgUserRepository::new(state.pool.clone());
+
+    // Map NotFound → Unauthorized to avoid leaking user existence
+    let user = repo.find_by_email(&payload.email).await.map_err(|e| {
+        if matches!(e, AppError::NotFound(_)) {
+            AppError::Unauthorized("invalid credentials".into())
+        } else {
+            e
+        }
+    })?;
+
+    if !verify_password(&payload.password, &user.password_hash)? {
+        return Err(AppError::Unauthorized("invalid credentials".into()));
+    }
+
+    let token = create_token(user.id, &state.jwt_secret, state.jwt_expiration_hours)?;
+
+    Ok(Json(json!({
+        "data": {
+            "token": token,
+            "wrapped_dek": STANDARD.encode(&user.wrapped_dek),
+            "dek_salt":    STANDARD.encode(&user.dek_salt),
+            "dek_params":  user.dek_params,
+        }
+    })))
 }
