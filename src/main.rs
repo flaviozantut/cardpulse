@@ -1,6 +1,5 @@
-use cardpulse_api::router::build_router;
+use cardpulse_api::{config::AppConfig, db::init_pool, router::build_router, state::AppState};
 use dotenvy::dotenv;
-use std::env;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -16,11 +15,15 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let addr = format!("{host}:{port}");
+    let config = AppConfig::from_env();
+    let addr = format!("{}:{}", config.host, config.port);
 
-    let app = build_router();
+    let pool = init_pool(&config.database_url)
+        .await
+        .expect("failed to connect to database");
+
+    let state = AppState::new(pool);
+    let app = build_router(state);
 
     let listener = TcpListener::bind(&addr)
         .await

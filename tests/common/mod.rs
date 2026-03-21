@@ -1,17 +1,8 @@
 //! Shared test helpers for integration tests.
 
-use axum::Router;
 use axum_test::TestServer;
-use cardpulse_api::router::build_router;
+use cardpulse_api::{router::build_router, state::AppState};
 use sqlx::PgPool;
-
-/// Spawns an in-process test server with the full application router.
-///
-/// Uses `axum-test` so no real port binding is required.
-pub fn spawn_test_app() -> TestServer {
-    let app: Router = build_router();
-    TestServer::new(app).expect("failed to create test server")
-}
 
 /// Returns a [`PgPool`] connected to the test database with all migrations run.
 ///
@@ -23,4 +14,17 @@ pub async fn test_pool() -> PgPool {
     cardpulse_api::db::init_pool(&url)
         .await
         .expect("failed to connect to test database")
+}
+
+/// Spawns an in-process test server backed by the given pool.
+pub async fn spawn_test_app_with_state(pool: PgPool) -> TestServer {
+    let state = AppState::new(pool);
+    let app = build_router(state);
+    TestServer::new(app).expect("failed to create test server")
+}
+
+/// Spawns an in-process test server connected to the test database.
+pub async fn spawn_test_app() -> TestServer {
+    let pool = test_pool().await;
+    spawn_test_app_with_state(pool).await
 }

@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 #[tokio::test]
 async fn test_health_returns_200_with_status_ok() {
     // Arrange
-    let server = common::spawn_test_app();
+    let server = common::spawn_test_app().await;
 
     // Act
     let response = server.get("/health").await;
