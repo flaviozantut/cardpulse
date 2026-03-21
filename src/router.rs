@@ -7,8 +7,14 @@
 use axum::Router;
 
 use crate::handlers::health::health_check;
+use crate::handlers::test_blob::{create_blob, get_blob};
+use crate::state::AppState;
 
-/// Builds and returns the complete application router.
-pub fn build_router() -> Router {
-    Router::new().route("/health", axum::routing::get(health_check))
+/// Builds and returns the complete application router with shared state.
+pub fn build_router(state: AppState) -> Router {
+    Router::new()
+        .route("/health", axum::routing::get(health_check))
+        .route("/v1/test", axum::routing::post(create_blob))
+        .route("/v1/test/:id", axum::routing::get(get_blob))
+        .with_state(state)
 }
