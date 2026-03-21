@@ -18,7 +18,7 @@ impl std::fmt::Display for UserId {
 ///
 /// Sensitive fields (`wrapped_dek`, `dek_salt`) are encrypted blobs
 /// and are never exposed outside the authenticated owner's session.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
     pub email: String,
