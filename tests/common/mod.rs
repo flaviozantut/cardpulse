@@ -4,6 +4,9 @@ use axum_test::TestServer;
 use cardpulse_api::{router::build_router, state::AppState};
 use sqlx::PgPool;
 
+const TEST_JWT_SECRET: &str = "ci-secret-minimum-64-chars-long-for-hs256-validation-in-tests-ok";
+const TEST_JWT_EXPIRATION_HOURS: u64 = 24;
+
 /// Returns a [`PgPool`] connected to the test database with all migrations run.
 ///
 /// Reads `DATABASE_URL_TEST` from the environment (set in `.env`).
@@ -18,7 +21,7 @@ pub async fn test_pool() -> PgPool {
 
 /// Spawns an in-process test server backed by the given pool.
 pub async fn spawn_test_app_with_state(pool: PgPool) -> TestServer {
-    let state = AppState::new(pool);
+    let state = AppState::new(pool, TEST_JWT_SECRET.to_string(), TEST_JWT_EXPIRATION_HOURS);
     let app = build_router(state);
     TestServer::new(app).expect("failed to create test server")
 }

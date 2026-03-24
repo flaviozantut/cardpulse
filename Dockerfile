@@ -9,7 +9,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-RUN cargo install cargo-watch \
+RUN rustup component add rustfmt clippy \
+    && cargo install cargo-watch \
     && cargo install sqlx-cli --no-default-features --features postgres
 
 WORKDIR /app
