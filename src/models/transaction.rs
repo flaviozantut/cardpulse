@@ -19,7 +19,7 @@ impl std::fmt::Display for TransactionId {
 /// All financial data is encrypted client-side. The only temporal
 /// metadata stored in plaintext is `timestamp_bucket` ("YYYY-MM"),
 /// which allows filtering without exposing exact timestamps.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Transaction {
     pub id: Uuid,
     pub user_id: Uuid,
