@@ -7,6 +7,7 @@
 use axum::Router;
 
 use crate::auth::handler::{login, refresh, register};
+use crate::handlers::cards::{create_card, delete_card, list_cards, update_card};
 use crate::handlers::health::health_check;
 use crate::handlers::me::me;
 use crate::handlers::test_blob::{create_blob, get_blob};
@@ -20,6 +21,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/login", axum::routing::post(login))
         .route("/auth/refresh", axum::routing::post(refresh))
         .route("/v1/me", axum::routing::get(me))
+        .route(
+            "/v1/cards",
+            axum::routing::post(create_card).get(list_cards),
+        )
+        .route(
+            "/v1/cards/:id",
+            axum::routing::put(update_card).delete(delete_card),
+        )
         .route("/v1/test", axum::routing::post(create_blob))
         .route("/v1/test/:id", axum::routing::get(get_blob))
         .with_state(state)
