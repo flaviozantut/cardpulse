@@ -5,4 +5,5 @@
 //! serialization — they contain no business logic or SQL.
 
 pub mod health;
+pub mod me;
 pub mod test_blob;
