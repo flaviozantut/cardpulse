@@ -8,6 +8,7 @@ use axum::Router;
 
 use crate::auth::handler::{login, register};
 use crate::handlers::health::health_check;
+use crate::handlers::me::me;
 use crate::handlers::test_blob::{create_blob, get_blob};
 use crate::state::AppState;
 
@@ -17,6 +18,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", axum::routing::get(health_check))
         .route("/auth/register", axum::routing::post(register))
         .route("/auth/login", axum::routing::post(login))
+        .route("/v1/me", axum::routing::get(me))
         .route("/v1/test", axum::routing::post(create_blob))
         .route("/v1/test/:id", axum::routing::get(get_blob))
         .with_state(state)
