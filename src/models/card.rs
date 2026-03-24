@@ -18,7 +18,7 @@ impl std::fmt::Display for CardId {
 ///
 /// All card data is encrypted client-side; the server stores only
 /// opaque blobs and never inspects the plaintext content.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Card {
     pub id: Uuid,
     pub user_id: Uuid,

@@ -4,6 +4,7 @@
 //! request extraction, delegation to repositories, and response
 //! serialization — they contain no business logic or SQL.
 
+pub mod cards;
 pub mod health;
 pub mod me;
 pub mod test_blob;

@@ -24,6 +24,10 @@ pub enum AppError {
     #[error("{0}")]
     Unauthorized(String),
 
+    /// The authenticated user does not have permission to access this resource.
+    #[error("{0}")]
+    Forbidden(String),
+
     /// The resource already exists (e.g. duplicate email).
     #[error("{0}")]
     Conflict(String),
@@ -43,6 +47,7 @@ impl AppError {
         match self {
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -54,6 +59,7 @@ impl AppError {
         match self {
             AppError::NotFound(_) => "NOT_FOUND",
             AppError::Unauthorized(_) => "UNAUTHORIZED",
+            AppError::Forbidden(_) => "FORBIDDEN",
             AppError::Conflict(_) => "CONFLICT",
             AppError::ValidationError(_) => "VALIDATION_ERROR",
             AppError::InternalError(_) => "INTERNAL_ERROR",
@@ -130,6 +136,15 @@ mod tests {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(body["error"]["code"], "VALIDATION_ERROR");
         assert_eq!(body["error"]["message"], "invalid payload");
+    }
+
+    #[tokio::test]
+    async fn test_forbidden_returns_403_with_correct_body() {
+        let (status, body) = parse_response(AppError::Forbidden("not your resource".into())).await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "FORBIDDEN");
+        assert_eq!(body["error"]["message"], "not your resource");
     }
 
     #[tokio::test]
