@@ -3,6 +3,7 @@
 //! # Endpoints
 //! - `POST /auth/register` — create a new user account
 //! - `POST /auth/login`    — verify credentials, return JWT + wrapped DEK
+//! - `POST /auth/refresh`  — renew a valid JWT before expiration
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -12,6 +13,7 @@ use serde_json::json;
 use crate::{
     auth::{
         jwt::create_token,
+        middleware::AuthUser,
         password::{hash_password, verify_password},
     },
     error::AppError,
@@ -107,4 +109,20 @@ pub async fn login(
             "dek_params":  user.dek_params,
         }
     })))
+}
+
+/// `POST /auth/refresh` — renew a valid JWT before expiration.
+///
+/// Takes the current Bearer token (validated by [`AuthUser`] extractor),
+/// and issues a new token with the same `user_id` and a fresh expiration.
+///
+/// # Responses
+/// - `200 OK` — `{ "data": { "token": "<new-jwt>" } }`
+/// - `401 Unauthorized` — missing, invalid, or expired token
+pub async fn refresh(
+    State(state): State<AppState>,
+    AuthUser(user_id): AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    let token = create_token(user_id.0, &state.jwt_secret, state.jwt_expiration_hours)?;
+    Ok(Json(json!({ "data": { "token": token } })))
 }
