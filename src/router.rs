@@ -11,6 +11,9 @@ use crate::handlers::cards::{create_card, delete_card, list_cards, update_card};
 use crate::handlers::health::health_check;
 use crate::handlers::me::me;
 use crate::handlers::test_blob::{create_blob, get_blob};
+use crate::handlers::transactions::{
+    create_transaction, delete_transaction, list_transactions, update_transaction,
+};
 use crate::state::AppState;
 
 /// Builds and returns the complete application router with shared state.
@@ -28,6 +31,14 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/v1/cards/:id",
             axum::routing::put(update_card).delete(delete_card),
+        )
+        .route(
+            "/v1/transactions",
+            axum::routing::post(create_transaction).get(list_transactions),
+        )
+        .route(
+            "/v1/transactions/:id",
+            axum::routing::put(update_transaction).delete(delete_transaction),
         )
         .route("/v1/test", axum::routing::post(create_blob))
         .route("/v1/test/:id", axum::routing::get(get_blob))

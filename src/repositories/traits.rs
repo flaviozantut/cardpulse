@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    models::{card::Card, user::User},
+    models::{card::Card, transaction::Transaction, user::User},
 };
 
 /// Data needed to create a new user row.
@@ -86,6 +86,71 @@ pub trait CardRepository: Send + Sync {
     ///
     /// # Errors
     /// - [`AppError::NotFound`] if no card with that ID exists.
+    /// - [`AppError::InternalError`] on database error.
+    async fn delete(&self, id: Uuid) -> Result<(), AppError>;
+}
+
+/// Data needed to create a new transaction row.
+pub struct NewTransaction {
+    pub user_id: Uuid,
+    pub card_id: Uuid,
+    pub encrypted_data: Vec<u8>,
+    pub iv: Vec<u8>,
+    pub auth_tag: Vec<u8>,
+    pub timestamp_bucket: String,
+}
+
+/// Data needed to update an existing transaction row.
+pub struct UpdateTransaction {
+    pub encrypted_data: Vec<u8>,
+    pub iv: Vec<u8>,
+    pub auth_tag: Vec<u8>,
+    pub timestamp_bucket: String,
+}
+
+/// Optional filters for listing transactions.
+pub struct TransactionFilters {
+    pub card_id: Option<Uuid>,
+    pub timestamp_bucket: Option<String>,
+}
+
+/// Persistence operations for the `transactions` table.
+#[async_trait]
+pub trait TransactionRepository: Send + Sync {
+    /// Inserts a new transaction and returns the full [`Transaction`].
+    ///
+    /// # Errors
+    /// - [`AppError::InternalError`] on database error.
+    async fn create(&self, new_tx: NewTransaction) -> Result<Transaction, AppError>;
+
+    /// Fetches a single transaction by its ID.
+    ///
+    /// # Errors
+    /// - [`AppError::NotFound`] if no transaction with that ID exists.
+    /// - [`AppError::InternalError`] on database error.
+    async fn find_by_id(&self, id: Uuid) -> Result<Transaction, AppError>;
+
+    /// Lists transactions belonging to a user with optional filters.
+    ///
+    /// # Errors
+    /// - [`AppError::InternalError`] on database error.
+    async fn find_all_by_user_id(
+        &self,
+        user_id: Uuid,
+        filters: TransactionFilters,
+    ) -> Result<Vec<Transaction>, AppError>;
+
+    /// Updates a transaction and returns the updated [`Transaction`].
+    ///
+    /// # Errors
+    /// - [`AppError::NotFound`] if no transaction with that ID exists.
+    /// - [`AppError::InternalError`] on database error.
+    async fn update(&self, id: Uuid, data: UpdateTransaction) -> Result<Transaction, AppError>;
+
+    /// Deletes a transaction by its ID.
+    ///
+    /// # Errors
+    /// - [`AppError::NotFound`] if no transaction with that ID exists.
     /// - [`AppError::InternalError`] on database error.
     async fn delete(&self, id: Uuid) -> Result<(), AppError>;
 }
