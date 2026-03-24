@@ -12,3 +12,4 @@ pub mod models;
 pub mod repositories;
 pub mod router;
 pub mod state;
+pub mod validation;

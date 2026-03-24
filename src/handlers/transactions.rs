@@ -30,67 +30,8 @@ use crate::{
         transaction_repo::PgTransactionRepository,
     },
     state::AppState,
+    validation::{validate_base64, validate_timestamp_bucket},
 };
-
-/// Validates that `timestamp_bucket` matches the `YYYY-MM` format.
-fn validate_timestamp_bucket(bucket: &str) -> Result<(), AppError> {
-    if bucket.len() != 7 {
-        return Err(AppError::ValidationError(
-            "timestamp_bucket must be in YYYY-MM format".into(),
-        ));
-    }
-
-    let parts: Vec<&str> = bucket.split('-').collect();
-    if parts.len() != 2 {
-        return Err(AppError::ValidationError(
-            "timestamp_bucket must be in YYYY-MM format".into(),
-        ));
-    }
-
-    let year: u16 = parts[0].parse().map_err(|_| {
-        AppError::ValidationError("timestamp_bucket must be in YYYY-MM format".into())
-    })?;
-    let month: u8 = parts[1].parse().map_err(|_| {
-        AppError::ValidationError("timestamp_bucket must be in YYYY-MM format".into())
-    })?;
-
-    if year < 2000 || !(1..=12).contains(&month) {
-        return Err(AppError::ValidationError(
-            "timestamp_bucket must be a valid YYYY-MM date".into(),
-        ));
-    }
-
-    Ok(())
-}
-
-/// Decoded binary transaction fields from a base64-encoded request.
-struct DecodedTxFields {
-    encrypted_data: Vec<u8>,
-    iv: Vec<u8>,
-    auth_tag: Vec<u8>,
-}
-
-/// Decodes base64-encoded transaction fields.
-fn decode_tx_fields(
-    encrypted_data: &str,
-    iv: &str,
-    auth_tag: &str,
-) -> Result<DecodedTxFields, AppError> {
-    let encrypted_data = STANDARD
-        .decode(encrypted_data)
-        .map_err(|_| AppError::ValidationError("encrypted_data is not valid base64".into()))?;
-    let iv = STANDARD
-        .decode(iv)
-        .map_err(|_| AppError::ValidationError("iv is not valid base64".into()))?;
-    let auth_tag = STANDARD
-        .decode(auth_tag)
-        .map_err(|_| AppError::ValidationError("auth_tag is not valid base64".into()))?;
-    Ok(DecodedTxFields {
-        encrypted_data,
-        iv,
-        auth_tag,
-    })
-}
 
 /// Builds a [`TransactionResponse`] from a domain [`Transaction`].
 fn tx_to_response(tx: crate::models::transaction::Transaction) -> TransactionResponse {
@@ -169,14 +110,16 @@ pub async fn create_transaction(
     }
 
     for item in items {
-        let decoded = decode_tx_fields(&item.encrypted_data, &item.iv, &item.auth_tag)?;
+        let encrypted_data = validate_base64(&item.encrypted_data, "encrypted_data")?;
+        let iv = validate_base64(&item.iv, "iv")?;
+        let auth_tag = validate_base64(&item.auth_tag, "auth_tag")?;
         let tx = repo
             .create(NewTransaction {
                 user_id: user_id.0,
                 card_id: item.card_id,
-                encrypted_data: decoded.encrypted_data,
-                iv: decoded.iv,
-                auth_tag: decoded.auth_tag,
+                encrypted_data,
+                iv,
+                auth_tag,
                 timestamp_bucket: item.timestamp_bucket,
             })
             .await?;
@@ -266,14 +209,16 @@ pub async fn update_transaction(
         verify_card_ownership(&state.pool, payload.card_id, user_id.0).await?;
     }
 
-    let decoded = decode_tx_fields(&payload.encrypted_data, &payload.iv, &payload.auth_tag)?;
+    let encrypted_data = validate_base64(&payload.encrypted_data, "encrypted_data")?;
+    let iv = validate_base64(&payload.iv, "iv")?;
+    let auth_tag = validate_base64(&payload.auth_tag, "auth_tag")?;
     let tx = repo
         .update(
             id,
             UpdateTransaction {
-                encrypted_data: decoded.encrypted_data,
-                iv: decoded.iv,
-                auth_tag: decoded.auth_tag,
+                encrypted_data,
+                iv,
+                auth_tag,
                 timestamp_bucket: payload.timestamp_bucket,
             },
         )
@@ -307,27 +252,4 @@ pub async fn delete_transaction(
     repo.delete(id).await?;
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_validate_timestamp_bucket_accepts_valid_format() {
-        assert!(validate_timestamp_bucket("2025-01").is_ok());
-        assert!(validate_timestamp_bucket("2025-12").is_ok());
-        assert!(validate_timestamp_bucket("2000-06").is_ok());
-    }
-
-    #[test]
-    fn test_validate_timestamp_bucket_rejects_invalid_format() {
-        assert!(validate_timestamp_bucket("2025").is_err());
-        assert!(validate_timestamp_bucket("2025-1").is_err());
-        assert!(validate_timestamp_bucket("2025-13").is_err());
-        assert!(validate_timestamp_bucket("2025-00").is_err());
-        assert!(validate_timestamp_bucket("abcd-01").is_err());
-        assert!(validate_timestamp_bucket("25-01").is_err());
-        assert!(validate_timestamp_bucket("").is_err());
-    }
 }
