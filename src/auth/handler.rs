@@ -23,6 +23,7 @@ use crate::{
         user_repo::PgUserRepository,
     },
     state::AppState,
+    validation::validate_base64,
 };
 
 /// `POST /auth/register` — register a new user.
@@ -41,13 +42,8 @@ pub async fn register(
 ) -> Result<impl IntoResponse, AppError> {
     let password_hash = hash_password(&payload.password)?;
 
-    let wrapped_dek = STANDARD
-        .decode(&payload.wrapped_dek)
-        .map_err(|_| AppError::ValidationError("wrapped_dek is not valid base64".into()))?;
-
-    let dek_salt = STANDARD
-        .decode(&payload.dek_salt)
-        .map_err(|_| AppError::ValidationError("dek_salt is not valid base64".into()))?;
+    let wrapped_dek = validate_base64(&payload.wrapped_dek, "wrapped_dek")?;
+    let dek_salt = validate_base64(&payload.dek_salt, "dek_salt")?;
 
     let repo = PgUserRepository::new(state.pool);
     let id = repo

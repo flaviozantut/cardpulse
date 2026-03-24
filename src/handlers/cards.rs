@@ -25,6 +25,7 @@ use crate::{
         traits::{CardRepository, NewCard, UpdateCard},
     },
     state::AppState,
+    validation::validate_base64,
 };
 
 /// Builds a [`CardResponse`] from a domain [`Card`], encoding binary fields as base64.
@@ -39,31 +40,6 @@ fn card_to_response(card: crate::models::card::Card) -> CardResponse {
     }
 }
 
-/// Decoded binary card fields from a base64-encoded request.
-struct DecodedCardFields {
-    encrypted_data: Vec<u8>,
-    iv: Vec<u8>,
-    auth_tag: Vec<u8>,
-}
-
-/// Decodes base64-encoded card fields, returning a validation error on failure.
-fn decode_card_fields(payload: &CreateCard) -> Result<DecodedCardFields, AppError> {
-    let encrypted_data = STANDARD
-        .decode(&payload.encrypted_data)
-        .map_err(|_| AppError::ValidationError("encrypted_data is not valid base64".into()))?;
-    let iv = STANDARD
-        .decode(&payload.iv)
-        .map_err(|_| AppError::ValidationError("iv is not valid base64".into()))?;
-    let auth_tag = STANDARD
-        .decode(&payload.auth_tag)
-        .map_err(|_| AppError::ValidationError("auth_tag is not valid base64".into()))?;
-    Ok(DecodedCardFields {
-        encrypted_data,
-        iv,
-        auth_tag,
-    })
-}
-
 /// `POST /v1/cards` — create a new encrypted card.
 ///
 /// # Responses
@@ -75,15 +51,17 @@ pub async fn create_card(
     AuthUser(user_id): AuthUser,
     Json(payload): Json<CreateCard>,
 ) -> Result<impl IntoResponse, AppError> {
-    let decoded = decode_card_fields(&payload)?;
+    let encrypted_data = validate_base64(&payload.encrypted_data, "encrypted_data")?;
+    let iv = validate_base64(&payload.iv, "iv")?;
+    let auth_tag = validate_base64(&payload.auth_tag, "auth_tag")?;
 
     let repo = PgCardRepository::new(state.pool);
     let card = repo
         .create(NewCard {
             user_id: user_id.0,
-            encrypted_data: decoded.encrypted_data,
-            iv: decoded.iv,
-            auth_tag: decoded.auth_tag,
+            encrypted_data,
+            iv,
+            auth_tag,
         })
         .await?;
 
@@ -134,14 +112,16 @@ pub async fn update_card(
         ));
     }
 
-    let decoded = decode_card_fields(&payload)?;
+    let encrypted_data = validate_base64(&payload.encrypted_data, "encrypted_data")?;
+    let iv = validate_base64(&payload.iv, "iv")?;
+    let auth_tag = validate_base64(&payload.auth_tag, "auth_tag")?;
     let card = repo
         .update(
             id,
             UpdateCard {
-                encrypted_data: decoded.encrypted_data,
-                iv: decoded.iv,
-                auth_tag: decoded.auth_tag,
+                encrypted_data,
+                iv,
+                auth_tag,
             },
         )
         .await?;
