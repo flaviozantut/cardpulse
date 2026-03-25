@@ -36,6 +36,10 @@ pub enum AppError {
     #[error("{0}")]
     ValidationError(String),
 
+    /// Too many requests — rate limit exceeded.
+    #[error("{0}")]
+    TooManyRequests(String),
+
     /// An unexpected server-side error occurred.
     #[error("{0}")]
     InternalError(String),
@@ -50,6 +54,7 @@ impl AppError {
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -62,6 +67,7 @@ impl AppError {
             AppError::Forbidden(_) => "FORBIDDEN",
             AppError::Conflict(_) => "CONFLICT",
             AppError::ValidationError(_) => "VALIDATION_ERROR",
+            AppError::TooManyRequests(_) => "TOO_MANY_REQUESTS",
             AppError::InternalError(_) => "INTERNAL_ERROR",
         }
     }
@@ -145,6 +151,16 @@ mod tests {
         assert_eq!(status, StatusCode::FORBIDDEN);
         assert_eq!(body["error"]["code"], "FORBIDDEN");
         assert_eq!(body["error"]["message"], "not your resource");
+    }
+
+    #[tokio::test]
+    async fn test_too_many_requests_returns_429_with_correct_body() {
+        let (status, body) =
+            parse_response(AppError::TooManyRequests("rate limit exceeded".into())).await;
+
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(body["error"]["code"], "TOO_MANY_REQUESTS");
+        assert_eq!(body["error"]["message"], "rate limit exceeded");
     }
 
     #[tokio::test]
