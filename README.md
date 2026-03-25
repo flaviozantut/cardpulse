@@ -523,9 +523,10 @@ For detailed step-by-step instructions, see the [iOS Setup Guide](ios/README.md)
 |----------|----------|
 | Duplicate SMS (carrier retransmission) | Ignored via 30-second deduplication window |
 | Empty SMS body | Script exits silently, no API call |
-| Unrecognized SMS format | Logged and skipped, no data sent |
+| Unrecognized SMS format | Notification shown, raw SMS logged to console |
 | Expired JWT token | Notification shown to re-run setup |
-| Device offline | Notification shown, transaction not recorded |
+| Network error | Retries up to 3 times with exponential backoff |
+| Unknown card digits | Falls back to default card, or notification if none configured |
 
 ### Supported SMS Formats
 

@@ -19,13 +19,18 @@ const CONFIG = {
   // Keychain keys for stored credentials
   keychainTokenKey: "cardpulse_jwt_token",
   keychainDekKey: "cardpulse_dek",
-  keychainCardIdKey: "cardpulse_default_card_id",
+  keychainCardMapKey: "cardpulse_card_map",
+  keychainDefaultCardIdKey: "cardpulse_default_card_id",
 
   // Deduplication: ignore duplicate SMS received within this window (seconds)
   deduplicationWindowSecs: 30,
 
   // File for tracking recently processed messages
   deduplicationFile: "cardpulse_recent_sms.json",
+
+  // Network retry configuration
+  maxRetries: 3,
+  retryDelayMs: 2000,
 };
 
 // ─── Entry Point ────────────────────────────────────────────────────────────
@@ -36,6 +41,12 @@ async function main() {
   // Handle setup mode
   if (input === "setup") {
     await runSetup();
+    return;
+  }
+
+  // Handle card mapping mode
+  if (input === "cards") {
+    await runCardMapping();
     return;
   }
 
@@ -58,9 +69,8 @@ async function main() {
   // Load credentials from Keychain
   const token = Keychain.get(CONFIG.keychainTokenKey);
   const dekBase64 = Keychain.get(CONFIG.keychainDekKey);
-  const cardId = Keychain.get(CONFIG.keychainCardIdKey);
 
-  if (!token || !dekBase64 || !cardId) {
+  if (!token || !dekBase64) {
     notify(
       "CardPulse Setup Required",
       'Run this script with argument "setup" to configure credentials.'
@@ -72,13 +82,30 @@ async function main() {
   // Parse the SMS into structured transaction data
   const parsed = parseBankSms(smsBody);
   if (!parsed) {
-    console.log("SMS did not match any known bank format — skipping.");
+    notify(
+      "CardPulse Parse Error",
+      "SMS did not match any known bank format. Check the Scriptable console for the raw message."
+    );
+    console.error(`Unrecognized SMS format:\n${smsBody}`);
+    Script.complete();
+    return;
+  }
+
+  // Resolve card_id from last_digits via card mapping
+  const cardId = resolveCardId(parsed.last_digits);
+  if (!cardId) {
+    notify(
+      "CardPulse Card Not Found",
+      `No card mapped for last digits "${parsed.last_digits}". Run with argument "cards" to configure card mapping.`
+    );
     Script.complete();
     return;
   }
 
   // Build the plaintext JSON to encrypt
   const plaintext = JSON.stringify({
+    card_name: parsed.card_name,
+    last_digits: parsed.last_digits,
     merchant: parsed.merchant,
     amount: parsed.amount,
     currency: parsed.currency,
@@ -87,14 +114,14 @@ async function main() {
     raw_sms: smsBody,
   });
 
-  // Encrypt with AES-256-GCM
+  // Encrypt with AES-256-GCM using random IV
   const dek = Data.fromBase64String(dekBase64);
   const encrypted = await encryptAesGcm(plaintext, dek);
 
-  // Derive timestamp_bucket from parsed date (YYYY-MM)
+  // Compute timestamp_bucket as YYYY-MM from transaction date
   const bucket = deriveTimestampBucket(parsed.date);
 
-  // POST to the CardPulse API
+  // POST to the CardPulse API with retry on network error
   const payload = {
     card_id: cardId,
     encrypted_data: encrypted.ciphertext,
@@ -103,11 +130,13 @@ async function main() {
     timestamp_bucket: bucket,
   };
 
-  const success = await postTransaction(token, payload);
+  const success = await postTransactionWithRetry(token, payload);
 
   if (success) {
     markAsProcessed(smsBody);
-    console.log(`Transaction recorded: ${parsed.merchant} ${parsed.amount}`);
+    console.log(
+      `Transaction recorded: ${parsed.merchant} ${parsed.currency} ${parsed.amount} [${parsed.card_name} ...${parsed.last_digits}]`
+    );
   }
 
   Script.complete();
@@ -117,11 +146,15 @@ async function main() {
 
 // Parser chain — each function returns a parsed object or null.
 // Add new bank formats by appending to this array.
+// Specific parsers go first; generic fallback goes last.
 const PARSERS = [parseBradesco, parseGenericBrazilian];
 
 /**
  * Attempts to parse an SMS body using the parser chain.
  * Returns the first successful match, or null if none match.
+ *
+ * Parsed object shape:
+ *   { card_name, last_digits, merchant, amount, currency, date, time }
  */
 function parseBankSms(smsBody) {
   for (const parser of PARSERS) {
@@ -133,36 +166,55 @@ function parseBankSms(smsBody) {
 
 /**
  * Parses Bradesco-style SMS:
- * "Compra aprovada no seu PERSON BLACK PONTOS final *** -
+ * "Compra aprovada no seu PERSON BLACK PONTOS final 1234 -
  *  MERCADO EXTRA-1005 valor R$ 35,94 em 15/03, as 13h19."
+ *
+ * Extracts: card_name, last_digits, merchant, amount, date, time
  */
 function parseBradesco(sms) {
-  const pattern =
-    /Compra aprovada.*?-\s*(.+?)\s+valor\s+R\$\s*([\d.,]+)\s+em\s+(\d{2}\/\d{2})(?:,\s*(?:as|às)\s+(\d{2}h\d{2}))?/i;
-  const match = sms.match(pattern);
-  if (!match) return null;
+  // Match card name (text after "seu" and before "final") and last digits
+  const cardPattern =
+    /(?:no\s+seu|seu)\s+(.+?)\s+final\s+(\d{3,4}|\*{3,4})/i;
+  const cardMatch = sms.match(cardPattern);
+
+  // Match merchant, amount, date, and optional time
+  const txPattern =
+    /-\s*(.+?)\s+valor\s+R\$\s*([\d.,]+)\s+em\s+(\d{2}\/\d{2})(?:,\s*(?:as|às)\s+(\d{2}h\d{2}))?/i;
+  const txMatch = sms.match(txPattern);
+
+  if (!txMatch) return null;
 
   return {
-    merchant: match[1].trim(),
-    amount: parseAmount(match[2]),
+    card_name: cardMatch ? cardMatch[1].trim() : "Unknown",
+    last_digits: cardMatch ? cardMatch[2].replace(/\*/g, "") : "0000",
+    merchant: txMatch[1].trim(),
+    amount: parseAmount(txMatch[2]),
     currency: "BRL",
-    date: normalizeDate(match[3]),
-    time: match[4] ? match[4].replace("h", ":") : null,
+    date: normalizeDate(txMatch[3]),
+    time: txMatch[4] ? txMatch[4].replace("h", ":") : null,
   };
 }
 
 /**
- * Generic Brazilian bank SMS parser:
- * Matches patterns like "valor R$ XX,XX" with merchant and date.
+ * Generic Brazilian bank SMS parser.
+ * Matches patterns like "final XXXX" for card info and "valor R$ XX,XX"
+ * for transaction data. Falls back to defaults for missing fields.
  */
 function parseGenericBrazilian(sms) {
   const amountMatch = sms.match(/R\$\s*([\d.,]+)/i);
-  const dateMatch = sms.match(/(\d{2}\/\d{2}(?:\/\d{2,4})?)/);
-
   if (!amountMatch) return null;
 
-  // Try to extract merchant — text between "-" and "valor" or first
-  // significant segment
+  const dateMatch = sms.match(/(\d{2}\/\d{2}(?:\/\d{2,4})?)/);
+
+  // Extract card name and last digits
+  const cardPattern = /(?:cartao|cartão|seu)\s+(.+?)\s+final\s+(\d{3,4})/i;
+  const cardMatch = sms.match(cardPattern);
+
+  // Extract last digits from alternative patterns
+  const digitsPattern = /final\s+(\d{3,4})/i;
+  const digitsMatch = sms.match(digitsPattern);
+
+  // Try to extract merchant
   let merchant = "Unknown";
   const merchantMatch = sms.match(/-\s*(.+?)\s+valor/i);
   if (merchantMatch) {
@@ -170,6 +222,12 @@ function parseGenericBrazilian(sms) {
   }
 
   return {
+    card_name: cardMatch ? cardMatch[1].trim() : "Unknown",
+    last_digits: cardMatch
+      ? cardMatch[2]
+      : digitsMatch
+        ? digitsMatch[1]
+        : "0000",
     merchant,
     amount: parseAmount(amountMatch[1]),
     currency: "BRL",
@@ -182,7 +240,6 @@ function parseGenericBrazilian(sms) {
  * Parses a Brazilian amount string like "1.234,56" into a float string.
  */
 function parseAmount(raw) {
-  // Remove thousands separator (.), replace decimal comma with dot
   return raw.replace(/\./g, "").replace(",", ".");
 }
 
@@ -224,19 +281,65 @@ function deriveTimestampBucket(isoDate) {
   return isoDate.substring(0, 7);
 }
 
+// ─── Card Mapping ───────────────────────────────────────────────────────────
+
+/**
+ * Resolves a card_id from the last digits of the card number.
+ *
+ * Uses the configurable card mapping stored in the Keychain.
+ * The mapping is a JSON object: { "1234": "uuid-...", "5678": "uuid-..." }
+ * Falls back to the default card ID if no mapping is found.
+ */
+function resolveCardId(lastDigits) {
+  const mapJson = Keychain.get(CONFIG.keychainCardMapKey);
+  if (mapJson) {
+    try {
+      const cardMap = JSON.parse(mapJson);
+      if (cardMap[lastDigits]) {
+        return cardMap[lastDigits];
+      }
+    } catch {
+      console.error("Failed to parse card mapping from Keychain.");
+    }
+  }
+
+  // Fall back to default card ID
+  return Keychain.get(CONFIG.keychainDefaultCardIdKey) || null;
+}
+
+/**
+ * Loads the current card mapping from Keychain.
+ */
+function loadCardMap() {
+  const mapJson = Keychain.get(CONFIG.keychainCardMapKey);
+  if (!mapJson) return {};
+  try {
+    return JSON.parse(mapJson);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Saves the card mapping to Keychain.
+ */
+function saveCardMap(cardMap) {
+  Keychain.set(CONFIG.keychainCardMapKey, JSON.stringify(cardMap));
+}
+
 // ─── Encryption ─────────────────────────────────────────────────────────────
 
 /**
- * Encrypts plaintext with AES-256-GCM.
+ * Encrypts plaintext with AES-256-GCM using a random 12-byte IV.
  *
  * Returns { ciphertext, iv, authTag } as base64 strings.
- * Uses Scriptable's built-in Data API for byte operations.
+ * Uses the Web Crypto API available in Scriptable's JavaScript runtime.
  */
 async function encryptAesGcm(plaintext, dekData) {
-  // Generate a random 12-byte IV
+  // Generate a random 12-byte IV (unique per encryption)
   const iv = generateRandomBytes(12);
 
-  // Import the DEK as a CryptoKey
+  // Import the DEK as a CryptoKey for AES-256-GCM
   const key = await crypto.subtle.importKey(
     "raw",
     dekData.getBytes(),
@@ -245,7 +348,7 @@ async function encryptAesGcm(plaintext, dekData) {
     ["encrypt"]
   );
 
-  // Encrypt
+  // Encrypt with AES-256-GCM (128-bit auth tag)
   const encoder = new TextEncoder();
   const plaintextBytes = encoder.encode(plaintext);
   const encrypted = await crypto.subtle.encrypt(
@@ -267,7 +370,7 @@ async function encryptAesGcm(plaintext, dekData) {
 }
 
 /**
- * Generates random bytes using Scriptable's Data API.
+ * Generates cryptographically random bytes.
  */
 function generateRandomBytes(length) {
   const bytes = new Uint8Array(length);
@@ -275,12 +378,102 @@ function generateRandomBytes(length) {
   return Data.fromBytes(Array.from(bytes));
 }
 
+// ─── DEK Derivation ─────────────────────────────────────────────────────────
+
+/**
+ * Derives the DEK from the master password using the wrapped DEK and salt
+ * returned by the server during login.
+ *
+ * The server stores the DEK encrypted (wrapped) with a key derived from the
+ * master password via Argon2id. Since WebCrypto doesn't support Argon2, we
+ * use PBKDF2 as the client-side KDF for unwrapping.
+ *
+ * Flow:
+ *   1. Derive an unwrap key from master password + dek_salt via PBKDF2
+ *   2. Decrypt (unwrap) the wrapped_dek using AES-GCM with the derived key
+ *   3. The result is the raw 256-bit DEK
+ */
+async function deriveDek(masterPassword, wrappedDekBase64, dekSaltBase64, dekParams) {
+  const encoder = new TextEncoder();
+  const salt = Data.fromBase64String(dekSaltBase64).getBytes();
+  const iterations = dekParams?.iterations || 600000;
+
+  // Import master password as key material for PBKDF2
+  const passwordKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(masterPassword),
+    "PBKDF2",
+    false,
+    ["deriveBits", "deriveKey"]
+  );
+
+  // Derive the unwrap key via PBKDF2
+  const unwrapKey = await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: iterations,
+      hash: "SHA-256",
+    },
+    passwordKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+
+  // Unwrap the DEK — the wrapped_dek contains IV (12 bytes) + ciphertext + tag
+  const wrappedBytes = Data.fromBase64String(wrappedDekBase64).getBytes();
+  const wrappedIv = wrappedBytes.slice(0, 12);
+  const wrappedCiphertext = wrappedBytes.slice(12);
+
+  const dekBytes = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: wrappedIv, tagLength: 128 },
+    unwrapKey,
+    wrappedCiphertext
+  );
+
+  return Data.fromBytes(Array.from(new Uint8Array(dekBytes))).toBase64String();
+}
+
 // ─── API Communication ──────────────────────────────────────────────────────
+
+/**
+ * Posts an encrypted transaction to the CardPulse API with retry logic.
+ *
+ * Retries up to CONFIG.maxRetries times on network errors with exponential
+ * backoff. Returns true on success, false on permanent failure.
+ */
+async function postTransactionWithRetry(token, payload) {
+  for (let attempt = 1; attempt <= CONFIG.maxRetries; attempt++) {
+    const result = await postTransaction(token, payload);
+
+    if (result.success) return true;
+
+    // Don't retry on auth or validation errors — these are permanent
+    if (result.permanent) return false;
+
+    // Network error — retry with exponential backoff
+    if (attempt < CONFIG.maxRetries) {
+      const delay = CONFIG.retryDelayMs * Math.pow(2, attempt - 1);
+      console.log(
+        `Network error on attempt ${attempt}/${CONFIG.maxRetries}. Retrying in ${delay}ms...`
+      );
+      await sleep(delay);
+    }
+  }
+
+  notify(
+    "CardPulse Network Error",
+    `Failed to send transaction after ${CONFIG.maxRetries} attempts. Will retry on next SMS.`
+  );
+  return false;
+}
 
 /**
  * Posts an encrypted transaction to the CardPulse API.
  *
- * Returns true on success, false on failure.
+ * Returns { success: bool, permanent: bool } where permanent indicates
+ * whether the error is not worth retrying.
  */
 async function postTransaction(token, payload) {
   const url = `${CONFIG.apiBaseUrl}/v1/transactions`;
@@ -296,7 +489,7 @@ async function postTransaction(token, payload) {
     const response = await req.loadJSON();
 
     if (req.response.statusCode === 201) {
-      return true;
+      return { success: true, permanent: false };
     }
 
     if (req.response.statusCode === 401) {
@@ -304,21 +497,33 @@ async function postTransaction(token, payload) {
         "CardPulse Auth Expired",
         "Your token has expired. Please run setup again."
       );
-      return false;
+      return { success: false, permanent: true };
+    }
+
+    if (req.response.statusCode === 422) {
+      notify(
+        "CardPulse Validation Error",
+        `Invalid payload: ${response?.error?.message || "unknown error"}`
+      );
+      return { success: false, permanent: true };
     }
 
     console.error(
       `API error ${req.response.statusCode}: ${JSON.stringify(response)}`
     );
-    return false;
+    return { success: false, permanent: true };
   } catch (error) {
+    // Network error — retryable
     console.error(`Network error: ${error.message}`);
-    notify(
-      "CardPulse Error",
-      "Failed to send transaction. Check your connection."
-    );
-    return false;
+    return { success: false, permanent: false };
   }
+}
+
+/**
+ * Async sleep helper for retry backoff.
+ */
+function sleep(ms) {
+  return new Promise((resolve) => Timer.schedule(ms, false, resolve));
 }
 
 // ─── Deduplication ──────────────────────────────────────────────────────────
@@ -331,7 +536,6 @@ function isDuplicate(smsBody) {
   const now = Date.now();
   const windowMs = CONFIG.deduplicationWindowSecs * 1000;
 
-  // Simple hash of the SMS body for comparison
   const hash = simpleHash(smsBody);
 
   return recent.some(
@@ -380,7 +584,7 @@ function simpleHash(str) {
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = (hash << 5) - hash + char;
-    hash |= 0; // Convert to 32-bit integer
+    hash |= 0;
   }
   return hash.toString();
 }
@@ -388,36 +592,38 @@ function simpleHash(str) {
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
 /**
- * Interactive setup flow — stores API credentials in the iOS Keychain.
+ * Interactive setup flow — authenticates with the API, derives the DEK from
+ * the master password, and stores everything in the iOS Keychain.
+ *
+ * The DEK is protected by the Keychain's device-level security (passcode /
+ * Face ID / Touch ID). Scriptable uses the default Keychain accessibility
+ * level which requires the device to be unlocked.
  */
 async function runSetup() {
-  const alert = new Alert();
-  alert.title = "CardPulse Setup";
-  alert.message =
-    "Enter your CardPulse API credentials.\n\n" +
-    "These will be stored securely in the iOS Keychain.";
+  // Step 1: Collect credentials
+  const credAlert = new Alert();
+  credAlert.title = "CardPulse Setup (1/2)";
+  credAlert.message = "Enter your CardPulse API credentials.";
+  credAlert.addTextField("API Base URL", CONFIG.apiBaseUrl);
+  credAlert.addTextField("Email");
+  credAlert.addSecureTextField("Password");
+  credAlert.addAction("Next");
+  credAlert.addCancelAction("Cancel");
 
-  alert.addTextField("API Base URL", CONFIG.apiBaseUrl);
-  alert.addTextField("Email");
-  alert.addSecureTextField("Password");
-  alert.addTextField("Default Card ID (UUID)");
-  alert.addAction("Login & Save");
-  alert.addCancelAction("Cancel");
+  const credIdx = await credAlert.presentAlert();
+  if (credIdx === -1) return;
 
-  const idx = await alert.presentAlert();
-  if (idx === -1) return;
+  const baseUrl = credAlert.textFieldValue(0).trim();
+  const email = credAlert.textFieldValue(1).trim();
+  const password = credAlert.textFieldValue(2);
 
-  const baseUrl = alert.textFieldValue(0).trim();
-  const email = alert.textFieldValue(1).trim();
-  const password = alert.textFieldValue(2);
-  const cardId = alert.textFieldValue(3).trim();
-
-  // Login to get token and DEK
+  // Step 2: Login to get token and wrapped DEK
   const loginReq = new Request(`${baseUrl}/auth/login`);
   loginReq.method = "POST";
   loginReq.headers = { "Content-Type": "application/json" };
   loginReq.body = JSON.stringify({ email, password });
 
+  let loginData;
   try {
     const response = await loginReq.loadJSON();
 
@@ -426,24 +632,152 @@ async function runSetup() {
       return;
     }
 
-    // Store credentials in Keychain
-    Keychain.set(CONFIG.keychainTokenKey, response.data.token);
-    Keychain.set(CONFIG.keychainCardIdKey, cardId);
+    loginData = response.data;
+  } catch (error) {
+    notify("CardPulse Setup Error", `Login failed: ${error.message}`);
+    return;
+  }
 
-    // Note: The DEK must be derived client-side from the master password
-    // and the wrapped_dek returned by the server. This step requires the
-    // user to enter their master password separately.
-    // For now, store wrapped_dek info for the dashboard to handle DEK setup.
+  // Step 3: Collect master password for DEK derivation
+  const dekAlert = new Alert();
+  dekAlert.title = "CardPulse Setup (2/2)";
+  dekAlert.message =
+    "Enter your master password to derive the encryption key.\n\n" +
+    "This is the password you used when creating your account in the " +
+    "dashboard. It is NOT the same as your API login password.";
+  dekAlert.addSecureTextField("Master Password");
+  dekAlert.addAction("Derive & Save");
+  dekAlert.addCancelAction("Cancel");
+
+  const dekIdx = await dekAlert.presentAlert();
+  if (dekIdx === -1) return;
+
+  const masterPassword = dekAlert.textFieldValue(0);
+
+  // Step 4: Derive DEK from master password + server-provided wrapped DEK
+  try {
+    const dekBase64 = await deriveDek(
+      masterPassword,
+      loginData.wrapped_dek,
+      loginData.dek_salt,
+      loginData.dek_params
+    );
+
+    // Store everything in the iOS Keychain
+    // Keychain entries are protected by the device passcode / Face ID
+    Keychain.set(CONFIG.keychainTokenKey, loginData.token);
+    Keychain.set(CONFIG.keychainDekKey, dekBase64);
+
+    // Update API base URL if changed
+    if (baseUrl !== CONFIG.apiBaseUrl) {
+      console.log(`API URL updated to: ${baseUrl}`);
+    }
 
     notify(
       "CardPulse Setup Complete",
-      "Credentials saved. SMS capture is ready.\n\n" +
-        "Note: You must configure your DEK separately using the dashboard."
+      "Credentials and encryption key saved to Keychain.\n\n" +
+        'Run with argument "cards" to configure card mapping.'
     );
 
-    console.log("Setup complete. Token and card ID stored in Keychain.");
+    console.log("Setup complete. Token and DEK stored in Keychain.");
   } catch (error) {
-    notify("CardPulse Setup Error", `Login failed: ${error.message}`);
+    notify(
+      "CardPulse DEK Error",
+      "Failed to derive encryption key. Check your master password."
+    );
+    console.error(`DEK derivation error: ${error.message}`);
+  }
+}
+
+/**
+ * Interactive card mapping flow — maps card last digits to card UUIDs.
+ *
+ * This allows the script to automatically route transactions to the correct
+ * card based on the last digits extracted from the SMS.
+ */
+async function runCardMapping() {
+  const token = Keychain.get(CONFIG.keychainTokenKey);
+  if (!token) {
+    notify(
+      "CardPulse Setup Required",
+      'Run this script with argument "setup" first.'
+    );
+    return;
+  }
+
+  // Fetch existing cards from the API
+  const cardsReq = new Request(`${CONFIG.apiBaseUrl}/v1/cards`);
+  cardsReq.headers = { Authorization: `Bearer ${token}` };
+
+  let cards = [];
+  try {
+    const response = await cardsReq.loadJSON();
+    if (cardsReq.response.statusCode === 200) {
+      cards = response.data || [];
+    }
+  } catch (error) {
+    console.error(`Failed to fetch cards: ${error.message}`);
+  }
+
+  const currentMap = loadCardMap();
+
+  const alert = new Alert();
+  alert.title = "Card Mapping";
+  alert.message =
+    "Map card last digits to card IDs.\n\n" +
+    `You have ${cards.length} card(s) in the API.\n` +
+    `Current mappings: ${Object.keys(currentMap).length}\n\n` +
+    "Enter last 4 digits and the card UUID.";
+
+  alert.addTextField("Last 4 Digits (e.g., 1234)");
+  alert.addTextField("Card UUID");
+  alert.addTextField("Default Card UUID (fallback)");
+  alert.addAction("Add Mapping");
+  alert.addAction("View Current Mappings");
+  alert.addCancelAction("Done");
+
+  const idx = await alert.presentAlert();
+
+  if (idx === 0) {
+    // Add mapping
+    const digits = alert.textFieldValue(0).trim();
+    const cardId = alert.textFieldValue(1).trim();
+    const defaultId = alert.textFieldValue(2).trim();
+
+    if (digits && cardId) {
+      currentMap[digits] = cardId;
+      saveCardMap(currentMap);
+      console.log(`Mapped card ...${digits} → ${cardId}`);
+    }
+
+    if (defaultId) {
+      Keychain.set(CONFIG.keychainDefaultCardIdKey, defaultId);
+      console.log(`Default card set to: ${defaultId}`);
+    }
+
+    notify(
+      "CardPulse Card Mapping Updated",
+      `Card ...${digits} mapped successfully.\nTotal mappings: ${Object.keys(currentMap).length}`
+    );
+  } else if (idx === 1) {
+    // View mappings
+    const entries = Object.entries(currentMap);
+    const defaultId = Keychain.get(CONFIG.keychainDefaultCardIdKey);
+    let msg = entries.length === 0 ? "No card mappings configured.\n" : "";
+
+    for (const [digits, id] of entries) {
+      msg += `...${digits} → ${id.substring(0, 8)}...\n`;
+    }
+
+    if (defaultId) {
+      msg += `\nDefault: ${defaultId.substring(0, 8)}...`;
+    }
+
+    const viewAlert = new Alert();
+    viewAlert.title = "Current Card Mappings";
+    viewAlert.message = msg;
+    viewAlert.addAction("OK");
+    await viewAlert.presentAlert();
   }
 }
 
