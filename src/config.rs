@@ -17,6 +17,10 @@ pub struct AppConfig {
     pub jwt_secret: String,
     /// Token lifetime in hours (`JWT_EXPIRATION_HOURS`, default `24`).
     pub jwt_expiration_hours: u64,
+    /// Comma-separated list of allowed CORS origins (`CORS_ALLOWED_ORIGINS`).
+    ///
+    /// Defaults to `http://localhost:3000` for local development.
+    pub cors_allowed_origins: Vec<String>,
 }
 
 impl AppConfig {
@@ -38,6 +42,57 @@ impl AppConfig {
                 .unwrap_or_else(|_| "24".to_string())
                 .parse()
                 .expect("JWT_EXPIRATION_HOURS must be a valid u64"),
+            cors_allowed_origins: std::env::var("CORS_ALLOWED_ORIGINS")
+                .unwrap_or_else(|_| "http://localhost:3000".to_string())
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_cors_origins_splits_comma_separated_values() {
+        let input = "https://app.example.com, https://staging.example.com";
+        let origins: Vec<String> = input
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        assert_eq!(origins.len(), 2);
+        assert_eq!(origins[0], "https://app.example.com");
+        assert_eq!(origins[1], "https://staging.example.com");
+    }
+
+    #[test]
+    fn test_parse_cors_origins_handles_single_value() {
+        let input = "https://app.example.com";
+        let origins: Vec<String> = input
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0], "https://app.example.com");
+    }
+
+    #[test]
+    fn test_parse_cors_origins_filters_empty_entries() {
+        let input = "https://app.example.com,,, ";
+        let origins: Vec<String> = input
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0], "https://app.example.com");
     }
 }

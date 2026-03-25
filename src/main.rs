@@ -22,7 +22,12 @@ async fn main() {
         .await
         .expect("failed to connect to database");
 
-    let state = AppState::new(pool, config.jwt_secret, config.jwt_expiration_hours);
+    let state = AppState::new(
+        pool,
+        config.jwt_secret,
+        config.jwt_expiration_hours,
+        config.cors_allowed_origins,
+    );
     let app = build_router(state);
 
     let listener = TcpListener::bind(&addr)

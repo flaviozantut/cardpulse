@@ -21,7 +21,12 @@ pub async fn test_pool() -> PgPool {
 
 /// Spawns an in-process test server backed by the given pool.
 pub async fn spawn_test_app_with_state(pool: PgPool) -> TestServer {
-    let state = AppState::new(pool, TEST_JWT_SECRET.to_string(), TEST_JWT_EXPIRATION_HOURS);
+    let state = AppState::new(
+        pool,
+        TEST_JWT_SECRET.to_string(),
+        TEST_JWT_EXPIRATION_HOURS,
+        vec!["http://localhost:3000".to_string()],
+    );
     let app = build_router(state);
     TestServer::new(app).expect("failed to create test server")
 }
