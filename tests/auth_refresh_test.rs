@@ -1,39 +1,7 @@
 mod common;
 
 use axum::http::{header::HeaderValue, StatusCode};
-use serde_json::json;
 use uuid::Uuid;
-
-/// Generates a unique email for each test run.
-fn unique_email(prefix: &str) -> String {
-    format!("{prefix}+{}@example.com", Uuid::new_v4())
-}
-
-/// Registers a user and logs in, returning the JWT token.
-async fn register_and_login(server: &axum_test::TestServer) -> String {
-    let email = unique_email("refresh");
-    server
-        .post("/auth/register")
-        .json(&json!({
-            "email": email,
-            "password": "testpassword123",
-            "wrapped_dek": "aGVsbG8gd29ybGQ=",
-            "dek_salt": "c2FsdHNhbHQ=",
-            "dek_params": "{\"m\":65536}"
-        }))
-        .await;
-
-    let response = server
-        .post("/auth/login")
-        .json(&json!({ "email": email, "password": "testpassword123" }))
-        .await;
-
-    let body: serde_json::Value = response.json();
-    body["data"]["token"]
-        .as_str()
-        .expect("login must return a token")
-        .to_string()
-}
 
 // ── Happy path ────────────────────────────────────────────────────────────
 
@@ -41,15 +9,12 @@ async fn register_and_login(server: &axum_test::TestServer) -> String {
 async fn test_refresh_with_valid_token_returns_200_with_new_token() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server).await;
+    let token = common::create_test_user_and_login(&server, "refresh").await;
 
     // Act
     let response = server
         .post("/auth/refresh")
-        .add_header(
-            axum::http::header::AUTHORIZATION,
-            format!("Bearer {token}").parse::<HeaderValue>().unwrap(),
-        )
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     // Assert

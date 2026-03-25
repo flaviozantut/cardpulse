@@ -1,86 +1,8 @@
 mod common;
 
-use axum::http::{header::HeaderValue, StatusCode};
+use axum::http::StatusCode;
 use serde_json::json;
 use uuid::Uuid;
-
-/// Generates a unique email for each test run.
-fn unique_email(prefix: &str) -> String {
-    format!("{prefix}+{}@example.com", Uuid::new_v4())
-}
-
-/// Registers a user and logs in, returning the JWT token.
-async fn register_and_login(server: &axum_test::TestServer, prefix: &str) -> String {
-    let email = unique_email(prefix);
-    server
-        .post("/auth/register")
-        .json(&json!({
-            "email": email,
-            "password": "testpassword123",
-            "wrapped_dek": "aGVsbG8gd29ybGQ=",
-            "dek_salt": "c2FsdHNhbHQ=",
-            "dek_params": "{\"m\":65536}"
-        }))
-        .await;
-
-    let response = server
-        .post("/auth/login")
-        .json(&json!({ "email": email, "password": "testpassword123" }))
-        .await;
-
-    let body: serde_json::Value = response.json();
-    body["data"]["token"]
-        .as_str()
-        .expect("login must return a token")
-        .to_string()
-}
-
-fn bearer(token: &str) -> HeaderValue {
-    format!("Bearer {token}").parse().unwrap()
-}
-
-/// Creates a card and returns its ID.
-async fn create_test_card(server: &axum_test::TestServer, token: &str) -> Uuid {
-    let response = server
-        .post("/v1/cards")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(token))
-        .json(&json!({
-            "encrypted_data": "aGVsbG8gd29ybGQ=",
-            "iv": "c29tZWl2MTIzNA==",
-            "auth_tag": "dGFnMTIzNDU2Nzg="
-        }))
-        .await;
-
-    let body: serde_json::Value = response.json();
-    Uuid::parse_str(body["data"]["id"].as_str().unwrap()).unwrap()
-}
-
-fn tx_payload(card_id: Uuid, bucket: &str) -> serde_json::Value {
-    json!({
-        "card_id": card_id,
-        "encrypted_data": "dHhkYXRh",
-        "iv": "dHhpdjEyMzQ=",
-        "auth_tag": "dHh0YWcxMjM0",
-        "timestamp_bucket": bucket
-    })
-}
-
-/// Creates a transaction and returns its ID.
-async fn create_test_tx(
-    server: &axum_test::TestServer,
-    token: &str,
-    card_id: Uuid,
-    bucket: &str,
-) -> Uuid {
-    let response = server
-        .post("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(token))
-        .json(&tx_payload(card_id, bucket))
-        .await;
-
-    let body: serde_json::Value = response.json();
-    Uuid::parse_str(body["data"]["id"].as_str().unwrap()).unwrap()
-}
 
 // ── POST /v1/transactions ─────────────────────────────────────────────────
 
@@ -88,14 +10,14 @@ async fn create_test_tx(
 async fn test_create_transaction_with_valid_payload_returns_201() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-create").await;
-    let card_id = create_test_card(&server, &token).await;
+    let token = common::create_test_user_and_login(&server, "tx-create").await;
+    let card_id = common::create_test_card(&server, &token).await;
 
     // Act
     let response = server
         .post("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
-        .json(&tx_payload(card_id, "2025-03"))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&common::tx_payload(card_id, "2025-03"))
         .await;
 
     // Assert
@@ -114,18 +36,18 @@ async fn test_create_transaction_with_valid_payload_returns_201() {
 async fn test_create_transaction_bulk_returns_201_with_array() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-bulk").await;
-    let card_id = create_test_card(&server, &token).await;
+    let token = common::create_test_user_and_login(&server, "tx-bulk").await;
+    let card_id = common::create_test_card(&server, &token).await;
 
     let bulk = json!([
-        tx_payload(card_id, "2025-01"),
-        tx_payload(card_id, "2025-02"),
+        common::tx_payload(card_id, "2025-01"),
+        common::tx_payload(card_id, "2025-02"),
     ]);
 
     // Act
     let response = server
         .post("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .json(&bulk)
         .await;
 
@@ -169,14 +91,14 @@ async fn test_create_transaction_without_auth_returns_401() {
 async fn test_create_transaction_with_invalid_bucket_returns_422() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-bad-bucket").await;
-    let card_id = create_test_card(&server, &token).await;
+    let token = common::create_test_user_and_login(&server, "tx-bad-bucket").await;
+    let card_id = common::create_test_card(&server, &token).await;
 
     // Act
     let response = server
         .post("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
-        .json(&tx_payload(card_id, "not-valid"))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&common::tx_payload(card_id, "not-valid"))
         .await;
 
     // Assert
@@ -191,13 +113,13 @@ async fn test_create_transaction_with_invalid_bucket_returns_422() {
 async fn test_create_transaction_with_nonexistent_card_returns_404() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-no-card").await;
+    let token = common::create_test_user_and_login(&server, "tx-no-card").await;
 
     // Act
     let response = server
         .post("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
-        .json(&tx_payload(Uuid::new_v4(), "2025-03"))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&common::tx_payload(Uuid::new_v4(), "2025-03"))
         .await;
 
     // Assert
@@ -212,15 +134,15 @@ async fn test_create_transaction_with_nonexistent_card_returns_404() {
 async fn test_create_transaction_with_other_users_card_returns_403() {
     // Arrange — User A's card, User B tries to create tx
     let server = common::spawn_test_app().await;
-    let token_a = register_and_login(&server, "tx-card-a").await;
-    let token_b = register_and_login(&server, "tx-card-b").await;
-    let card_id = create_test_card(&server, &token_a).await;
+    let token_a = common::create_test_user_and_login(&server, "tx-card-a").await;
+    let token_b = common::create_test_user_and_login(&server, "tx-card-b").await;
+    let card_id = common::create_test_card(&server, &token_a).await;
 
     // Act
     let response = server
         .post("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token_b))
-        .json(&tx_payload(card_id, "2025-03"))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token_b))
+        .json(&common::tx_payload(card_id, "2025-03"))
         .await;
 
     // Assert
@@ -237,15 +159,15 @@ async fn test_create_transaction_with_other_users_card_returns_403() {
 async fn test_list_transactions_returns_200_with_array() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-list").await;
-    let card_id = create_test_card(&server, &token).await;
-    create_test_tx(&server, &token, card_id, "2025-01").await;
-    create_test_tx(&server, &token, card_id, "2025-02").await;
+    let token = common::create_test_user_and_login(&server, "tx-list").await;
+    let card_id = common::create_test_card(&server, &token).await;
+    common::create_test_transaction(&server, &token, card_id, "2025-01").await;
+    common::create_test_transaction(&server, &token, card_id, "2025-02").await;
 
     // Act
     let response = server
         .get("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     // Assert
@@ -265,17 +187,17 @@ async fn test_list_transactions_without_auth_returns_401() {
 async fn test_list_transactions_filters_by_card_id() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-filter-card").await;
-    let card_a = create_test_card(&server, &token).await;
-    let card_b = create_test_card(&server, &token).await;
-    create_test_tx(&server, &token, card_a, "2025-03").await;
-    create_test_tx(&server, &token, card_a, "2025-03").await;
-    create_test_tx(&server, &token, card_b, "2025-03").await;
+    let token = common::create_test_user_and_login(&server, "tx-filter-card").await;
+    let card_a = common::create_test_card(&server, &token).await;
+    let card_b = common::create_test_card(&server, &token).await;
+    common::create_test_transaction(&server, &token, card_a, "2025-03").await;
+    common::create_test_transaction(&server, &token, card_a, "2025-03").await;
+    common::create_test_transaction(&server, &token, card_b, "2025-03").await;
 
     // Act
     let response = server
         .get(&format!("/v1/transactions?card_id={card_a}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     // Assert
@@ -291,16 +213,16 @@ async fn test_list_transactions_filters_by_card_id() {
 async fn test_list_transactions_filters_by_timestamp_bucket() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-filter-bucket").await;
-    let card_id = create_test_card(&server, &token).await;
-    create_test_tx(&server, &token, card_id, "2025-01").await;
-    create_test_tx(&server, &token, card_id, "2025-02").await;
-    create_test_tx(&server, &token, card_id, "2025-02").await;
+    let token = common::create_test_user_and_login(&server, "tx-filter-bucket").await;
+    let card_id = common::create_test_card(&server, &token).await;
+    common::create_test_transaction(&server, &token, card_id, "2025-01").await;
+    common::create_test_transaction(&server, &token, card_id, "2025-02").await;
+    common::create_test_transaction(&server, &token, card_id, "2025-02").await;
 
     // Act
     let response = server
         .get("/v1/transactions?timestamp_bucket=2025-02")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     // Assert
@@ -316,17 +238,17 @@ async fn test_list_transactions_filters_by_timestamp_bucket() {
 async fn test_list_transactions_returns_only_own_transactions() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token_a = register_and_login(&server, "tx-own-a").await;
-    let token_b = register_and_login(&server, "tx-own-b").await;
-    let card_a = create_test_card(&server, &token_a).await;
-    let card_b = create_test_card(&server, &token_b).await;
-    create_test_tx(&server, &token_a, card_a, "2025-03").await;
-    create_test_tx(&server, &token_b, card_b, "2025-03").await;
+    let token_a = common::create_test_user_and_login(&server, "tx-own-a").await;
+    let token_b = common::create_test_user_and_login(&server, "tx-own-b").await;
+    let card_a = common::create_test_card(&server, &token_a).await;
+    let card_b = common::create_test_card(&server, &token_b).await;
+    common::create_test_transaction(&server, &token_a, card_a, "2025-03").await;
+    common::create_test_transaction(&server, &token_b, card_b, "2025-03").await;
 
     // Act
     let response = server
         .get("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token_a))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token_a))
         .await;
 
     // Assert
@@ -344,9 +266,9 @@ async fn test_list_transactions_returns_only_own_transactions() {
 async fn test_update_transaction_with_valid_payload_returns_200() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-update").await;
-    let card_id = create_test_card(&server, &token).await;
-    let tx_id = create_test_tx(&server, &token, card_id, "2025-03").await;
+    let token = common::create_test_user_and_login(&server, "tx-update").await;
+    let card_id = common::create_test_card(&server, &token).await;
+    let tx_id = common::create_test_transaction(&server, &token, card_id, "2025-03").await;
 
     let updated = json!({
         "card_id": card_id,
@@ -359,7 +281,7 @@ async fn test_update_transaction_with_valid_payload_returns_200() {
     // Act
     let response = server
         .put(&format!("/v1/transactions/{tx_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .json(&updated)
         .await;
 
@@ -377,13 +299,13 @@ async fn test_update_transaction_with_valid_payload_returns_200() {
 #[tokio::test]
 async fn test_update_transaction_without_auth_returns_401() {
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-update-noauth").await;
-    let card_id = create_test_card(&server, &token).await;
-    let tx_id = create_test_tx(&server, &token, card_id, "2025-03").await;
+    let token = common::create_test_user_and_login(&server, "tx-update-noauth").await;
+    let card_id = common::create_test_card(&server, &token).await;
+    let tx_id = common::create_test_transaction(&server, &token, card_id, "2025-03").await;
 
     let response = server
         .put(&format!("/v1/transactions/{tx_id}"))
-        .json(&tx_payload(card_id, "2025-03"))
+        .json(&common::tx_payload(card_id, "2025-03"))
         .await;
 
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
@@ -392,13 +314,13 @@ async fn test_update_transaction_without_auth_returns_401() {
 #[tokio::test]
 async fn test_update_transaction_not_found_returns_404() {
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-update-404").await;
-    let card_id = create_test_card(&server, &token).await;
+    let token = common::create_test_user_and_login(&server, "tx-update-404").await;
+    let card_id = common::create_test_card(&server, &token).await;
 
     let response = server
         .put(&format!("/v1/transactions/{}", Uuid::new_v4()))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
-        .json(&tx_payload(card_id, "2025-03"))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&common::tx_payload(card_id, "2025-03"))
         .await;
 
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
@@ -408,17 +330,17 @@ async fn test_update_transaction_not_found_returns_404() {
 async fn test_update_transaction_owned_by_another_user_returns_403() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token_a = register_and_login(&server, "tx-upd-a").await;
-    let token_b = register_and_login(&server, "tx-upd-b").await;
-    let card_a = create_test_card(&server, &token_a).await;
-    let card_b = create_test_card(&server, &token_b).await;
-    let tx_id = create_test_tx(&server, &token_a, card_a, "2025-03").await;
+    let token_a = common::create_test_user_and_login(&server, "tx-upd-a").await;
+    let token_b = common::create_test_user_and_login(&server, "tx-upd-b").await;
+    let card_a = common::create_test_card(&server, &token_a).await;
+    let card_b = common::create_test_card(&server, &token_b).await;
+    let tx_id = common::create_test_transaction(&server, &token_a, card_a, "2025-03").await;
 
     // Act — User B tries to update User A's transaction
     let response = server
         .put(&format!("/v1/transactions/{tx_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token_b))
-        .json(&tx_payload(card_b, "2025-03"))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token_b))
+        .json(&common::tx_payload(card_b, "2025-03"))
         .await;
 
     // Assert
@@ -432,14 +354,14 @@ async fn test_update_transaction_owned_by_another_user_returns_403() {
 #[tokio::test]
 async fn test_update_transaction_with_invalid_bucket_returns_422() {
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-upd-bucket").await;
-    let card_id = create_test_card(&server, &token).await;
-    let tx_id = create_test_tx(&server, &token, card_id, "2025-03").await;
+    let token = common::create_test_user_and_login(&server, "tx-upd-bucket").await;
+    let card_id = common::create_test_card(&server, &token).await;
+    let tx_id = common::create_test_transaction(&server, &token, card_id, "2025-03").await;
 
     let response = server
         .put(&format!("/v1/transactions/{tx_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
-        .json(&tx_payload(card_id, "bad"))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&common::tx_payload(card_id, "bad"))
         .await;
 
     assert_eq!(response.status_code(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -451,14 +373,14 @@ async fn test_update_transaction_with_invalid_bucket_returns_422() {
 async fn test_delete_transaction_returns_204() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-delete").await;
-    let card_id = create_test_card(&server, &token).await;
-    let tx_id = create_test_tx(&server, &token, card_id, "2025-03").await;
+    let token = common::create_test_user_and_login(&server, "tx-delete").await;
+    let card_id = common::create_test_card(&server, &token).await;
+    let tx_id = common::create_test_transaction(&server, &token, card_id, "2025-03").await;
 
     // Act
     let response = server
         .delete(&format!("/v1/transactions/{tx_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     // Assert
@@ -471,7 +393,7 @@ async fn test_delete_transaction_returns_204() {
     // Verify transaction is gone
     let list = server
         .get("/v1/transactions")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
     let body: serde_json::Value = list.json();
     assert_eq!(body["data"].as_array().unwrap().len(), 0);
@@ -480,9 +402,9 @@ async fn test_delete_transaction_returns_204() {
 #[tokio::test]
 async fn test_delete_transaction_without_auth_returns_401() {
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-del-noauth").await;
-    let card_id = create_test_card(&server, &token).await;
-    let tx_id = create_test_tx(&server, &token, card_id, "2025-03").await;
+    let token = common::create_test_user_and_login(&server, "tx-del-noauth").await;
+    let card_id = common::create_test_card(&server, &token).await;
+    let tx_id = common::create_test_transaction(&server, &token, card_id, "2025-03").await;
 
     let response = server.delete(&format!("/v1/transactions/{tx_id}")).await;
 
@@ -492,11 +414,11 @@ async fn test_delete_transaction_without_auth_returns_401() {
 #[tokio::test]
 async fn test_delete_transaction_not_found_returns_404() {
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "tx-del-404").await;
+    let token = common::create_test_user_and_login(&server, "tx-del-404").await;
 
     let response = server
         .delete(&format!("/v1/transactions/{}", Uuid::new_v4()))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
@@ -505,14 +427,14 @@ async fn test_delete_transaction_not_found_returns_404() {
 #[tokio::test]
 async fn test_delete_transaction_owned_by_another_user_returns_403() {
     let server = common::spawn_test_app().await;
-    let token_a = register_and_login(&server, "tx-del-a").await;
-    let token_b = register_and_login(&server, "tx-del-b").await;
-    let card_a = create_test_card(&server, &token_a).await;
-    let tx_id = create_test_tx(&server, &token_a, card_a, "2025-03").await;
+    let token_a = common::create_test_user_and_login(&server, "tx-del-a").await;
+    let token_b = common::create_test_user_and_login(&server, "tx-del-b").await;
+    let card_a = common::create_test_card(&server, &token_a).await;
+    let tx_id = common::create_test_transaction(&server, &token_a, card_a, "2025-03").await;
 
     let response = server
         .delete(&format!("/v1/transactions/{tx_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token_b))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token_b))
         .await;
 
     assert_eq!(

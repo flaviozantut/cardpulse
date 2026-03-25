@@ -2,22 +2,6 @@ mod common;
 
 use axum::http::StatusCode;
 use serde_json::json;
-use uuid::Uuid;
-
-/// Generates a unique email for each test run.
-fn unique_email(prefix: &str) -> String {
-    format!("{prefix}+{}@example.com", Uuid::new_v4())
-}
-
-fn register_payload(email: &str) -> serde_json::Value {
-    json!({
-        "email": email,
-        "password": "supersecret123",
-        "wrapped_dek": "aGVsbG8gd29ybGQ=",
-        "dek_salt": "c2FsdHNhbHQ=",
-        "dek_params": "{\"m\":65536,\"t\":3,\"p\":1}"
-    })
-}
 
 // ── Register rate limit ─────────────────────────────────────────────────────
 
@@ -28,10 +12,10 @@ async fn test_register_exceeding_rate_limit_returns_429() {
 
     // Act — send 6 requests (limit is 5/min)
     for i in 0..5 {
-        let email = unique_email(&format!("rl-reg-{i}"));
+        let email = common::unique_email(&format!("rl-reg-{i}"));
         let response = server
             .post("/auth/register")
-            .json(&register_payload(&email))
+            .json(&common::register_payload(&email))
             .await;
 
         assert_ne!(
@@ -42,10 +26,10 @@ async fn test_register_exceeding_rate_limit_returns_429() {
     }
 
     // 6th request should be rate limited
-    let email = unique_email("rl-reg-over");
+    let email = common::unique_email("rl-reg-over");
     let response = server
         .post("/auth/register")
-        .json(&register_payload(&email))
+        .json(&common::register_payload(&email))
         .await;
 
     // Assert
@@ -70,7 +54,7 @@ async fn test_login_exceeding_rate_limit_returns_429() {
         let response = server
             .post("/auth/login")
             .json(&json!({
-                "email": unique_email(&format!("rl-login-{i}")),
+                "email": common::unique_email(&format!("rl-login-{i}")),
                 "password": "whatever"
             }))
             .await;
@@ -86,7 +70,7 @@ async fn test_login_exceeding_rate_limit_returns_429() {
     let response = server
         .post("/auth/login")
         .json(&json!({
-            "email": unique_email("rl-login-over"),
+            "email": common::unique_email("rl-login-over"),
             "password": "whatever"
         }))
         .await;
@@ -110,10 +94,10 @@ async fn test_register_rate_limit_does_not_affect_login() {
 
     // Exhaust register limit (5 requests)
     for i in 0..5 {
-        let email = unique_email(&format!("rl-cross-reg-{i}"));
+        let email = common::unique_email(&format!("rl-cross-reg-{i}"));
         server
             .post("/auth/register")
-            .json(&register_payload(&email))
+            .json(&common::register_payload(&email))
             .await;
     }
 
@@ -121,7 +105,7 @@ async fn test_register_rate_limit_does_not_affect_login() {
     let response = server
         .post("/auth/login")
         .json(&json!({
-            "email": unique_email("rl-cross-login"),
+            "email": common::unique_email("rl-cross-login"),
             "password": "whatever"
         }))
         .await;
