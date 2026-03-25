@@ -52,6 +52,12 @@ pub async fn spawn_test_app() -> TestServer {
 ///
 /// Call this at the beginning of tests that require a clean database state.
 /// Uses `CASCADE` to handle foreign key constraints.
+///
+/// # Warning
+///
+/// This function is NOT safe to call during parallel test execution — it
+/// will wipe data used by other concurrent tests. Only use in sequential
+/// test scenarios or with dedicated test databases.
 pub async fn cleanup_tables(pool: &PgPool) {
     sqlx::query("TRUNCATE TABLE transactions, cards, users CASCADE")
         .execute(pool)
@@ -124,7 +130,10 @@ pub async fn create_test_card(server: &TestServer, token: &str) -> Uuid {
         .await;
 
     let body: serde_json::Value = response.json();
-    Uuid::parse_str(body["data"]["id"].as_str().unwrap()).unwrap()
+    let id_str = body["data"]["id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("create_test_card: expected data.id in response, got: {body}"));
+    Uuid::parse_str(id_str).unwrap()
 }
 
 // ─── Transaction helpers ────────────────────────────────────────────────────
@@ -154,5 +163,8 @@ pub async fn create_test_transaction(
         .await;
 
     let body: serde_json::Value = response.json();
-    Uuid::parse_str(body["data"]["id"].as_str().unwrap()).unwrap()
+    let id_str = body["data"]["id"].as_str().unwrap_or_else(|| {
+        panic!("create_test_transaction: expected data.id in response, got: {body}")
+    });
+    Uuid::parse_str(id_str).unwrap()
 }

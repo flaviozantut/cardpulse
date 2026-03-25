@@ -94,32 +94,36 @@ async fn test_create_test_transaction_returns_valid_uuid() {
     );
 }
 
-// ── cleanup_tables ──────────────────────────────────────────────────────────
+// ── payload builders ────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn test_cleanup_tables_removes_all_data() {
-    let pool = common::test_pool().await;
-    let server = common::spawn_test_app_with_state(pool.clone()).await;
+async fn test_payload_builders_produce_valid_json() {
+    // Arrange
+    let email = common::unique_email("payload");
 
-    // Create some data
-    let token = common::create_test_user_and_login(&server, "helper-cleanup").await;
-    let card_id = common::create_test_card(&server, &token).await;
-    common::create_test_transaction(&server, &token, card_id, "2025-06").await;
+    // Act
+    let reg = common::register_payload(&email);
+    let card = common::card_payload();
+    let tx = common::tx_payload(uuid::Uuid::new_v4(), "2025-06");
 
-    // Act — truncate everything
-    common::cleanup_tables(&pool).await;
-
-    // Re-register (old user was truncated) and verify no data exists
-    let token2 = common::create_test_user_and_login(&server, "helper-cleanup-after").await;
-
-    let cards_response = server
-        .get("/v1/cards")
-        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token2))
-        .await;
-    let cards_body: serde_json::Value = cards_response.json();
-    assert_eq!(
-        cards_body["data"].as_array().unwrap().len(),
-        0,
-        "No cards should exist after cleanup"
+    // Assert — all payloads have the expected fields
+    assert!(reg["email"].is_string(), "register payload must have email");
+    assert!(
+        reg["password"].is_string(),
+        "register payload must have password"
+    );
+    assert!(
+        card["encrypted_data"].is_string(),
+        "card payload must have encrypted_data"
+    );
+    assert!(card["iv"].is_string(), "card payload must have iv");
+    assert!(
+        card["auth_tag"].is_string(),
+        "card payload must have auth_tag"
+    );
+    assert!(tx["card_id"].is_string(), "tx payload must have card_id");
+    assert!(
+        tx["timestamp_bucket"].is_string(),
+        "tx payload must have timestamp_bucket"
     );
 }
