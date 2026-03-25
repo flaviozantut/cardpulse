@@ -2,22 +2,6 @@ mod common;
 
 use axum::http::StatusCode;
 use serde_json::json;
-use uuid::Uuid;
-
-/// Generates a unique email for each test run to avoid conflicts between runs.
-fn unique_email(prefix: &str) -> String {
-    format!("{prefix}+{}@example.com", Uuid::new_v4())
-}
-
-fn register_payload_for(email: &str) -> serde_json::Value {
-    json!({
-        "email": email,
-        "password": "supersecret123",
-        "wrapped_dek": "aGVsbG8gd29ybGQ=",
-        "dek_salt": "c2FsdHNhbHQ=",
-        "dek_params": "{\"m\":65536,\"t\":3,\"p\":1}"
-    })
-}
 
 // ── Register tests ─────────────────────────────────────────────────────────
 
@@ -25,12 +9,12 @@ fn register_payload_for(email: &str) -> serde_json::Value {
 async fn test_register_with_valid_payload_returns_201() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let email = unique_email("alice");
+    let email = common::unique_email("alice");
 
     // Act
     let response = server
         .post("/auth/register")
-        .json(&register_payload_for(&email))
+        .json(&common::register_payload(&email))
         .await;
 
     // Assert
@@ -50,8 +34,8 @@ async fn test_register_with_valid_payload_returns_201() {
 async fn test_register_with_duplicate_email_returns_409() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let email = unique_email("bob");
-    let payload = register_payload_for(&email);
+    let email = common::unique_email("bob");
+    let payload = common::register_payload(&email);
 
     // First registration
     server.post("/auth/register").json(&payload).await;
@@ -77,7 +61,7 @@ async fn test_register_with_missing_fields_returns_422() {
     // Act — payload missing required fields
     let response = server
         .post("/auth/register")
-        .json(&json!({ "email": unique_email("carol") }))
+        .json(&json!({ "email": common::unique_email("carol") }))
         .await;
 
     // Assert
@@ -94,7 +78,7 @@ async fn test_register_with_missing_fields_returns_422() {
 async fn test_login_with_valid_credentials_returns_200_with_token_and_dek() {
     // Arrange — register first, then login
     let server = common::spawn_test_app().await;
-    let email = unique_email("dave");
+    let email = common::unique_email("dave");
     server
         .post("/auth/register")
         .json(&json!({
@@ -141,7 +125,7 @@ async fn test_login_with_valid_credentials_returns_200_with_token_and_dek() {
 async fn test_login_with_wrong_password_returns_401() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let email = unique_email("eve");
+    let email = common::unique_email("eve");
     server
         .post("/auth/register")
         .json(&json!({
@@ -177,7 +161,7 @@ async fn test_login_with_nonexistent_user_returns_401() {
     // Act
     let response = server
         .post("/auth/login")
-        .json(&json!({ "email": unique_email("ghost"), "password": "whatever" }))
+        .json(&json!({ "email": common::unique_email("ghost"), "password": "whatever" }))
         .await;
 
     // Assert

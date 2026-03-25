@@ -1,63 +1,8 @@
 mod common;
 
-use axum::http::{header::HeaderValue, StatusCode};
+use axum::http::StatusCode;
 use serde_json::json;
 use uuid::Uuid;
-
-/// Generates a unique email for each test run.
-fn unique_email(prefix: &str) -> String {
-    format!("{prefix}+{}@example.com", Uuid::new_v4())
-}
-
-/// Registers a user and logs in, returning the JWT token.
-async fn register_and_login(server: &axum_test::TestServer, prefix: &str) -> String {
-    let email = unique_email(prefix);
-    server
-        .post("/auth/register")
-        .json(&json!({
-            "email": email,
-            "password": "testpassword123",
-            "wrapped_dek": "aGVsbG8gd29ybGQ=",
-            "dek_salt": "c2FsdHNhbHQ=",
-            "dek_params": "{\"m\":65536}"
-        }))
-        .await;
-
-    let response = server
-        .post("/auth/login")
-        .json(&json!({ "email": email, "password": "testpassword123" }))
-        .await;
-
-    let body: serde_json::Value = response.json();
-    body["data"]["token"]
-        .as_str()
-        .expect("login must return a token")
-        .to_string()
-}
-
-fn card_payload() -> serde_json::Value {
-    json!({
-        "encrypted_data": "aGVsbG8gd29ybGQ=",
-        "iv": "c29tZWl2MTIzNA==",
-        "auth_tag": "dGFnMTIzNDU2Nzg="
-    })
-}
-
-fn bearer(token: &str) -> HeaderValue {
-    format!("Bearer {token}").parse().unwrap()
-}
-
-/// Creates a card and returns its ID.
-async fn create_test_card(server: &axum_test::TestServer, token: &str) -> Uuid {
-    let response = server
-        .post("/v1/cards")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(token))
-        .json(&card_payload())
-        .await;
-
-    let body: serde_json::Value = response.json();
-    Uuid::parse_str(body["data"]["id"].as_str().unwrap()).unwrap()
-}
 
 // ── POST /v1/cards ────────────────────────────────────────────────────────
 
@@ -65,13 +10,13 @@ async fn create_test_card(server: &axum_test::TestServer, token: &str) -> Uuid {
 async fn test_create_card_with_valid_payload_returns_201() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "create").await;
+    let token = common::create_test_user_and_login(&server, "create").await;
 
     // Act
     let response = server
         .post("/v1/cards")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
-        .json(&card_payload())
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&common::card_payload())
         .await;
 
     // Assert
@@ -94,7 +39,7 @@ async fn test_create_card_without_auth_returns_401() {
     let server = common::spawn_test_app().await;
 
     // Act
-    let response = server.post("/v1/cards").json(&card_payload()).await;
+    let response = server.post("/v1/cards").json(&common::card_payload()).await;
 
     // Assert
     assert_eq!(
@@ -110,12 +55,12 @@ async fn test_create_card_without_auth_returns_401() {
 async fn test_create_card_with_missing_fields_returns_422() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "create-invalid").await;
+    let token = common::create_test_user_and_login(&server, "create-invalid").await;
 
     // Act — payload missing required fields
     let response = server
         .post("/v1/cards")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .json(&json!({ "encrypted_data": "aGVsbG8=" }))
         .await;
 
@@ -133,16 +78,16 @@ async fn test_create_card_with_missing_fields_returns_422() {
 async fn test_list_cards_returns_200_with_array() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "list").await;
+    let token = common::create_test_user_and_login(&server, "list").await;
 
     // Create two cards
-    create_test_card(&server, &token).await;
-    create_test_card(&server, &token).await;
+    common::create_test_card(&server, &token).await;
+    common::create_test_card(&server, &token).await;
 
     // Act
     let response = server
         .get("/v1/cards")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     // Assert
@@ -180,18 +125,18 @@ async fn test_list_cards_without_auth_returns_401() {
 async fn test_list_cards_returns_only_own_cards() {
     // Arrange — two different users
     let server = common::spawn_test_app().await;
-    let token_a = register_and_login(&server, "list-a").await;
-    let token_b = register_and_login(&server, "list-b").await;
+    let token_a = common::create_test_user_and_login(&server, "list-a").await;
+    let token_b = common::create_test_user_and_login(&server, "list-b").await;
 
     // User A creates 2 cards, User B creates 1
-    create_test_card(&server, &token_a).await;
-    create_test_card(&server, &token_a).await;
-    create_test_card(&server, &token_b).await;
+    common::create_test_card(&server, &token_a).await;
+    common::create_test_card(&server, &token_a).await;
+    common::create_test_card(&server, &token_b).await;
 
     // Act — User A lists cards
     let response = server
         .get("/v1/cards")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token_a))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token_a))
         .await;
 
     // Assert
@@ -209,8 +154,8 @@ async fn test_list_cards_returns_only_own_cards() {
 async fn test_update_card_with_valid_payload_returns_200() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "update").await;
-    let card_id = create_test_card(&server, &token).await;
+    let token = common::create_test_user_and_login(&server, "update").await;
+    let card_id = common::create_test_card(&server, &token).await;
 
     let updated_payload = json!({
         "encrypted_data": "dXBkYXRlZA==",
@@ -221,7 +166,7 @@ async fn test_update_card_with_valid_payload_returns_200() {
     // Act
     let response = server
         .put(&format!("/v1/cards/{card_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .json(&updated_payload)
         .await;
 
@@ -239,13 +184,13 @@ async fn test_update_card_with_valid_payload_returns_200() {
 async fn test_update_card_without_auth_returns_401() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "update-noauth").await;
-    let card_id = create_test_card(&server, &token).await;
+    let token = common::create_test_user_and_login(&server, "update-noauth").await;
+    let card_id = common::create_test_card(&server, &token).await;
 
     // Act
     let response = server
         .put(&format!("/v1/cards/{card_id}"))
-        .json(&card_payload())
+        .json(&common::card_payload())
         .await;
 
     // Assert
@@ -260,14 +205,14 @@ async fn test_update_card_without_auth_returns_401() {
 async fn test_update_card_not_found_returns_404() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "update-404").await;
+    let token = common::create_test_user_and_login(&server, "update-404").await;
     let fake_id = Uuid::new_v4();
 
     // Act
     let response = server
         .put(&format!("/v1/cards/{fake_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
-        .json(&card_payload())
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&common::card_payload())
         .await;
 
     // Assert
@@ -282,15 +227,15 @@ async fn test_update_card_not_found_returns_404() {
 async fn test_update_card_owned_by_another_user_returns_403() {
     // Arrange — User A creates a card, User B tries to update it
     let server = common::spawn_test_app().await;
-    let token_a = register_and_login(&server, "update-a").await;
-    let token_b = register_and_login(&server, "update-b").await;
-    let card_id = create_test_card(&server, &token_a).await;
+    let token_a = common::create_test_user_and_login(&server, "update-a").await;
+    let token_b = common::create_test_user_and_login(&server, "update-b").await;
+    let card_id = common::create_test_card(&server, &token_a).await;
 
     // Act
     let response = server
         .put(&format!("/v1/cards/{card_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token_b))
-        .json(&card_payload())
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token_b))
+        .json(&common::card_payload())
         .await;
 
     // Assert
@@ -309,13 +254,13 @@ async fn test_update_card_owned_by_another_user_returns_403() {
 async fn test_delete_card_returns_204() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "delete").await;
-    let card_id = create_test_card(&server, &token).await;
+    let token = common::create_test_user_and_login(&server, "delete").await;
+    let card_id = common::create_test_card(&server, &token).await;
 
     // Act
     let response = server
         .delete(&format!("/v1/cards/{card_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     // Assert
@@ -328,7 +273,7 @@ async fn test_delete_card_returns_204() {
     // Verify card is gone
     let list_response = server
         .get("/v1/cards")
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
     let body: serde_json::Value = list_response.json();
     assert_eq!(body["data"].as_array().unwrap().len(), 0);
@@ -338,8 +283,8 @@ async fn test_delete_card_returns_204() {
 async fn test_delete_card_without_auth_returns_401() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "delete-noauth").await;
-    let card_id = create_test_card(&server, &token).await;
+    let token = common::create_test_user_and_login(&server, "delete-noauth").await;
+    let card_id = common::create_test_card(&server, &token).await;
 
     // Act
     let response = server.delete(&format!("/v1/cards/{card_id}")).await;
@@ -356,13 +301,13 @@ async fn test_delete_card_without_auth_returns_401() {
 async fn test_delete_card_not_found_returns_404() {
     // Arrange
     let server = common::spawn_test_app().await;
-    let token = register_and_login(&server, "delete-404").await;
+    let token = common::create_test_user_and_login(&server, "delete-404").await;
     let fake_id = Uuid::new_v4();
 
     // Act
     let response = server
         .delete(&format!("/v1/cards/{fake_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
         .await;
 
     // Assert
@@ -377,14 +322,14 @@ async fn test_delete_card_not_found_returns_404() {
 async fn test_delete_card_owned_by_another_user_returns_403() {
     // Arrange — User A creates a card, User B tries to delete it
     let server = common::spawn_test_app().await;
-    let token_a = register_and_login(&server, "delete-a").await;
-    let token_b = register_and_login(&server, "delete-b").await;
-    let card_id = create_test_card(&server, &token_a).await;
+    let token_a = common::create_test_user_and_login(&server, "delete-a").await;
+    let token_b = common::create_test_user_and_login(&server, "delete-b").await;
+    let card_id = common::create_test_card(&server, &token_a).await;
 
     // Act
     let response = server
         .delete(&format!("/v1/cards/{card_id}"))
-        .add_header(axum::http::header::AUTHORIZATION, bearer(&token_b))
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token_b))
         .await;
 
     // Assert
