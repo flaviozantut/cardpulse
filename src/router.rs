@@ -6,7 +6,9 @@
 
 use std::time::Duration;
 
+use axum::http::{header, Method};
 use axum::Router;
+use tower_http::cors::CorsLayer;
 
 use crate::auth::handler::{login, refresh, register};
 use crate::handlers::cards::{create_card, delete_card, list_cards, update_card};
@@ -19,8 +21,21 @@ use crate::handlers::transactions::{
 use crate::middleware::rate_limit::{rate_limit, RateLimiter};
 use crate::state::AppState;
 
+/// Builds a [`CorsLayer`] from the allowed origins list.
+///
+/// Allows GET, POST, PUT, DELETE methods and Authorization + Content-Type headers.
+fn build_cors_layer(origins: &[String]) -> CorsLayer {
+    let allowed_origins: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
+
+    CorsLayer::new()
+        .allow_origin(allowed_origins)
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+}
+
 /// Builds and returns the complete application router with shared state.
 pub fn build_router(state: AppState) -> Router {
+    let cors = build_cors_layer(&state.cors_allowed_origins);
     let register_limiter = RateLimiter::new(5, Duration::from_secs(60));
     let login_limiter = RateLimiter::new(10, Duration::from_secs(60));
 
@@ -60,5 +75,6 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/v1/test", axum::routing::post(create_blob))
         .route("/v1/test/:id", axum::routing::get(get_blob))
+        .layer(cors)
         .with_state(state)
 }
