@@ -494,17 +494,38 @@ Since the server cannot read data, all aggregation (totals, charts, category bre
 
 ## iOS Automation
 
+### How It Works
+
+```
+Bank SMS → iOS Shortcut (trigger) → Scriptable (parse + encrypt) → CardPulse API
+```
+
+When your bank sends a purchase SMS, an iOS Shortcut automation captures the message and passes it to a Scriptable script. The script parses the merchant, amount, and date, encrypts everything with AES-256-GCM using your DEK (stored in the iOS Keychain), and POSTs the ciphertext to the API. No plaintext data ever leaves the device.
+
 ### Requirements
 
 - iPhone with iOS 16+
 - [Scriptable](https://apps.apple.com/app/scriptable/id1405459188) app (free)
 - iOS Shortcuts app (built-in)
 
-### Setup
+### Quick Setup
 
-1. **Create the Scriptable script** — the script parses SMS text, encrypts with AES-256-GCM using the DEK stored in iOS Keychain, and POSTs to the API
-2. **Create the iOS Shortcut** — triggers on SMS from your bank's sender, extracts the message body, and passes it to the Scriptable script
-3. **Store the DEK** — on first setup, derive the DEK from your master password and store it in the iOS Keychain via Scriptable (protected by Face ID)
+1. **Install the script** — copy [`ios/scriptable/CardPulse.js`](ios/scriptable/CardPulse.js) into the Scriptable app
+2. **Run setup** — execute the script with `setup` as input to store your API credentials in the iOS Keychain
+3. **Create the Shortcut** — create an automation that triggers on SMS from your bank and runs the CardPulse Scriptable script with the message body as input
+4. **Turn off "Ask Before Running"** — for fully automatic capture
+
+For detailed step-by-step instructions, see the [iOS Setup Guide](ios/README.md).
+
+### Edge Case Handling
+
+| Scenario | Behavior |
+|----------|----------|
+| Duplicate SMS (carrier retransmission) | Ignored via 30-second deduplication window |
+| Empty SMS body | Script exits silently, no API call |
+| Unrecognized SMS format | Logged and skipped, no data sent |
+| Expired JWT token | Notification shown to re-run setup |
+| Device offline | Notification shown, transaction not recorded |
 
 ### Supported SMS Formats
 
@@ -515,7 +536,7 @@ Compra aprovada no seu PERSON BLACK PONTOS final *** -
 MERCADO EXTRA-1005 valor R$ 35,94 em 15/03, as 13h19.
 ```
 
-Additional bank formats can be added by implementing new parser patterns. The system uses a parser chain with fallback — if the first pattern doesn't match, it tries the next one.
+Additional bank formats can be added by implementing new parser functions and appending them to the `PARSERS` array. See the [iOS Setup Guide](ios/README.md#adding-new-bank-formats) for instructions.
 
 ---
 
@@ -598,6 +619,10 @@ make deploy-logs
 cardpulse-api/
 ├── CLAUDE.md                     # AI assistant rules and project context
 ├── README.md                     # This file
+├── ios/
+│   ├── README.md                 # iOS automation setup guide
+│   └── scriptable/
+│       └── CardPulse.js          # Scriptable SMS capture script
 ├── Cargo.toml                    # Rust dependencies
 ├── Dockerfile                    # Multi-stage: dev → builder → production
 ├── docker-compose.yml            # Local dev environment
