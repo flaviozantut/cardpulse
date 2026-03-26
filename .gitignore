@@ -16,6 +16,9 @@
 # macOS
 .DS_Store
 
+# Claude settings
+.claude/settings.local.json
+
 # Docker volumes (local data)
 pgdata/
 pgdata-test/
