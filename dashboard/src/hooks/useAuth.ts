@@ -1,31 +1,57 @@
+/**
+ * React hook for authentication and session state.
+ *
+ * Uses `useSyncExternalStore` to subscribe to the in-memory session store.
+ * All session data lives in memory only — never localStorage — so a page
+ * refresh requires re-authentication (intentional for zero-knowledge security).
+ */
+
 import { useCallback, useSyncExternalStore } from "react";
-import { clearToken, getToken, saveToken } from "../lib/auth";
+import {
+  type SessionInput,
+  clearSession,
+  getSessionSnapshot,
+  isAuthenticated as checkAuth,
+  isUnlocked as checkUnlocked,
+  setDek as storeDek,
+  setSession,
+  subscribe,
+  updateToken as refreshStoredToken,
+} from "../lib/session";
 
-/** Subscribers for token changes. */
-const listeners = new Set<() => void>();
-
-function subscribe(callback: () => void) {
-  listeners.add(callback);
-  return () => listeners.delete(callback);
-}
-
-function notifyListeners() {
-  listeners.forEach((cb) => cb());
-}
-
-/** Hook for authentication state. Returns the token and login/logout helpers. */
+/** Hook for authentication state. Returns session info and auth helpers. */
 export function useAuth() {
-  const token = useSyncExternalStore(subscribe, getToken, () => null);
+  const session = useSyncExternalStore(
+    subscribe,
+    getSessionSnapshot,
+    () => null
+  );
 
-  const login = useCallback((newToken: string) => {
-    saveToken(newToken);
-    notifyListeners();
+  const login = useCallback((input: SessionInput) => {
+    setSession(input);
+  }, []);
+
+  const unlock = useCallback((dek: Uint8Array) => {
+    storeDek(dek);
+  }, []);
+
+  const refreshToken = useCallback((newToken: string) => {
+    refreshStoredToken(newToken);
   }, []);
 
   const logout = useCallback(() => {
-    clearToken();
-    notifyListeners();
+    clearSession();
   }, []);
 
-  return { token, isAuthenticated: token !== null, login, logout };
+  return {
+    session,
+    token: session?.token ?? null,
+    dek: session?.dek ?? null,
+    isAuthenticated: checkAuth(),
+    isUnlocked: checkUnlocked(),
+    login,
+    unlock,
+    refreshToken,
+    logout,
+  };
 }
