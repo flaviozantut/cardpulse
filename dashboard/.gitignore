@@ -11,6 +11,10 @@ node_modules
 dist
 dist-ssr
 *.local
+.vite
+
+# Claude settings
+.claude/settings.local.json
 
 # Editor directories and files
 .vscode/*
