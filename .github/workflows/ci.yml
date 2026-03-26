@@ -18,8 +18,39 @@ env:
   RUST_LOG: info
 
 jobs:
-  ci:
-    name: fmt + lint + test
+  dashboard:
+    name: Dashboard — lint + test + build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: dashboard
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  api:
+    name: API — fmt + lint + test
     runs-on: ubuntu-latest
 
     services:
