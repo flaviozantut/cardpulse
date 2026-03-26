@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { useFilters } from "../hooks/useFilters";
 import { FilterBar } from "../components/FilterBar";
+import { SpendingCharts } from "../components/SpendingCharts";
 import type { Transaction } from "../types/api";
 import type { DecryptedTransaction } from "../types/dashboard";
 
@@ -231,6 +232,9 @@ export function DashboardPage() {
           loading={false}
         />
       </div>
+
+      {/* Charts */}
+      {!isLoading && <SpendingCharts transactions={filtered} />}
 
       {/* Filters */}
       <FilterBar
