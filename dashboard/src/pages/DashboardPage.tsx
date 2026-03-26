@@ -1,17 +1,118 @@
+/**
+ * Main dashboard page showing decrypted transactions with filters.
+ *
+ * Fetches encrypted data from the API, decrypts client-side using
+ * the DEK, then applies filters on the decrypted plaintext.
+ */
+
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listCards, listTransactions } from "../lib/api";
+import { decrypt } from "../lib/crypto";
+import { filterTransactions } from "../lib/filters";
 import { useAuth } from "../hooks/useAuth";
+import { useFilters } from "../hooks/useFilters";
+import { FilterBar } from "../components/FilterBar";
+import type { Transaction } from "../types/api";
+import type { DecryptedTransaction } from "../types/dashboard";
 
-/** Computes the current month bucket in YYYY-MM format. */
-function currentBucket(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  return `${now.getFullYear()}-${month}`;
+/** Attempts to decrypt a transaction's encrypted_data and parse it. */
+async function decryptTransaction(
+  tx: Transaction,
+  dek: Uint8Array
+): Promise<DecryptedTransaction> {
+  try {
+    const plaintext = await decrypt(tx.encrypted_data, tx.iv, tx.auth_tag, dek);
+
+    // Try to parse as JSON first (structured data from iOS client)
+    try {
+      const parsed = JSON.parse(plaintext);
+      return {
+        id: tx.id,
+        card_id: tx.card_id,
+        timestamp_bucket: tx.timestamp_bucket,
+        created_at: tx.created_at,
+        merchant: parsed.merchant ?? parsed.name ?? plaintext,
+        amount: parsed.amount ?? 0,
+        category: parsed.category ?? "uncategorized",
+        description: plaintext,
+      };
+    } catch {
+      // Plaintext is not JSON — treat as simple description string
+      const amountMatch = plaintext.match(
+        /R\$\s*([\d.,]+)/
+      );
+      const amount = amountMatch
+        ? parseFloat(amountMatch[1].replace(".", "").replace(",", "."))
+        : 0;
+
+      return {
+        id: tx.id,
+        card_id: tx.card_id,
+        timestamp_bucket: tx.timestamp_bucket,
+        created_at: tx.created_at,
+        merchant: plaintext.replace(/R\$\s*[\d.,]+/, "").trim() || plaintext,
+        amount,
+        category: "uncategorized",
+        description: plaintext,
+      };
+    }
+  } catch {
+    // Decryption failed — show as encrypted
+    return {
+      id: tx.id,
+      card_id: tx.card_id,
+      timestamp_bucket: tx.timestamp_bucket,
+      created_at: tx.created_at,
+      merchant: "[Decryption failed]",
+      amount: 0,
+      category: "unknown",
+      description: "[Unable to decrypt]",
+    };
+  }
+}
+
+/** Hook that fetches and decrypts all transactions. */
+function useDecryptedTransactions() {
+  const { token, dek } = useAuth();
+
+  const transactionsQuery = useQuery({
+    queryKey: ["transactions"],
+    queryFn: () => listTransactions(token!),
+    enabled: !!token,
+  });
+
+  const decryptedQuery = useQuery({
+    queryKey: ["transactions:decrypted", transactionsQuery.data?.length],
+    queryFn: async () => {
+      if (!transactionsQuery.data || !dek) return [];
+      return Promise.all(
+        transactionsQuery.data.map((tx) => decryptTransaction(tx, dek))
+      );
+    },
+    enabled: !!transactionsQuery.data && !!dek,
+  });
+
+  return {
+    data: decryptedQuery.data ?? [],
+    isLoading: transactionsQuery.isLoading || decryptedQuery.isLoading,
+    isError: transactionsQuery.isError || decryptedQuery.isError,
+    error: transactionsQuery.error ?? decryptedQuery.error,
+  };
+}
+
+/** Formats a number as Brazilian Real currency. */
+function formatBRL(value: number): string {
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 export function DashboardPage() {
   const { token } = useAuth();
-  const bucket = currentBucket();
+  const { filters, updateFilter, clearFilters, hasActiveFilters } =
+    useFilters();
 
   const cards = useQuery({
     queryKey: ["cards"],
@@ -19,23 +120,32 @@ export function DashboardPage() {
     enabled: !!token,
   });
 
-  const transactions = useQuery({
-    queryKey: ["transactions", bucket],
-    queryFn: () => listTransactions(token!, { timestamp_bucket: bucket }),
-    enabled: !!token,
-  });
+  const { data: allTransactions, isLoading, isError, error } =
+    useDecryptedTransactions();
+
+  const filtered = useMemo(
+    () => filterTransactions(allTransactions, filters),
+    [allTransactions, filters]
+  );
+
+  const totalAmount = useMemo(
+    () => filtered.reduce((sum, tx) => sum + tx.amount, 0),
+    [filtered]
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Viewing {bucket} &middot; All data is decrypted client-side
+          All data is decrypted client-side &middot;{" "}
+          {filtered.length} transaction{filtered.length !== 1 ? "s" : ""}
+          {hasActiveFilters ? " (filtered)" : ""}
         </p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <StatCard
           label="Cards"
           value={cards.data?.length ?? "..."}
@@ -43,41 +153,88 @@ export function DashboardPage() {
         />
         <StatCard
           label="Transactions"
-          value={transactions.data?.length ?? "..."}
-          loading={transactions.isLoading}
+          value={filtered.length}
+          loading={isLoading}
         />
-        <StatCard label="Period" value={bucket} loading={false} />
+        <StatCard
+          label="Total"
+          value={isLoading ? "..." : formatBRL(totalAmount)}
+          loading={false}
+        />
+        <StatCard
+          label="Avg"
+          value={
+            isLoading || filtered.length === 0
+              ? "..."
+              : formatBRL(totalAmount / filtered.length)
+          }
+          loading={false}
+        />
       </div>
 
-      {/* Transactions list (encrypted — placeholder) */}
+      {/* Filters */}
+      <FilterBar
+        filters={filters}
+        onFilterChange={updateFilter}
+        onClear={clearFilters}
+        hasActiveFilters={hasActiveFilters}
+        transactions={allTransactions}
+      />
+
+      {/* Transaction list */}
       <div className="rounded-lg border border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-4 py-3">
           <h2 className="text-lg font-medium text-gray-900">
-            Transactions ({bucket})
+            Transactions
+            {hasActiveFilters && (
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({filtered.length} of {allTransactions.length})
+              </span>
+            )}
           </h2>
         </div>
 
-        {transactions.isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Loading...</p>
-        ) : transactions.data?.length === 0 ? (
+        {isLoading ? (
           <p className="p-4 text-sm text-gray-500">
-            No transactions this month.
+            Loading and decrypting...
           </p>
+        ) : filtered.length === 0 ? (
+          <div className="p-4 text-center">
+            <p className="text-sm text-gray-500">
+              {hasActiveFilters
+                ? "No transactions match your filters."
+                : "No transactions yet."}
+            </p>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {transactions.data?.map((tx) => (
-              <li key={tx.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {tx.id.slice(0, 8)}...
+            {filtered.map((tx) => (
+              <li
+                key={tx.id}
+                className="flex items-center justify-between px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-gray-900">
+                    {tx.merchant}
                   </p>
                   <p className="text-xs text-gray-500">
-                    Card: {tx.card_id.slice(0, 8)}... &middot;{" "}
-                    {tx.timestamp_bucket}
+                    {tx.timestamp_bucket} &middot; {tx.category}
+                    {" · "}
+                    <span className="text-gray-400">
+                      {tx.card_id.slice(0, 8)}...
+                    </span>
                   </p>
                 </div>
-                <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                  Encrypted
+                <span className="ml-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                  {formatBRL(tx.amount)}
                 </span>
               </li>
             ))}
@@ -85,9 +242,9 @@ export function DashboardPage() {
         )}
       </div>
 
-      {transactions.isError && (
+      {isError && (
         <p className="text-sm text-red-600">
-          Failed to load transactions: {transactions.error.message}
+          Failed to load transactions: {error?.message}
         </p>
       )}
     </div>
