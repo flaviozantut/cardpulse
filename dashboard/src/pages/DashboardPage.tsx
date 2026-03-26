@@ -2,14 +2,22 @@
  * Main dashboard page showing decrypted transactions with filters.
  *
  * Fetches encrypted data from the API, decrypts client-side using
- * the DEK, then applies filters on the decrypted plaintext.
+ * the DEK, sorts by date descending, and applies client-side filters.
+ * Defaults to the current month with prev/next month navigation.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listCards, listTransactions } from "../lib/api";
 import { decrypt } from "../lib/crypto";
 import { filterTransactions } from "../lib/filters";
+import {
+  sortByDateDescending,
+  formatTransactionDate,
+  navigateMonth,
+  currentBucket,
+  formatBucket,
+} from "../lib/transactions";
 import { useAuth } from "../hooks/useAuth";
 import { useFilters } from "../hooks/useFilters";
 import { FilterBar } from "../components/FilterBar";
@@ -39,9 +47,7 @@ async function decryptTransaction(
       };
     } catch {
       // Plaintext is not JSON — treat as simple description string
-      const amountMatch = plaintext.match(
-        /R\$\s*([\d.,]+)/
-      );
+      const amountMatch = plaintext.match(/R\$\s*([\d.,]+)/);
       const amount = amountMatch
         ? parseFloat(amountMatch[1].replace(".", "").replace(",", "."))
         : 0;
@@ -58,7 +64,6 @@ async function decryptTransaction(
       };
     }
   } catch {
-    // Decryption failed — show as encrypted
     return {
       id: tx.id,
       card_id: tx.card_id,
@@ -114,6 +119,16 @@ export function DashboardPage() {
   const { filters, updateFilter, clearFilters, hasActiveFilters } =
     useFilters();
 
+  // Default to current month if no month filter is set
+  const defaultBucket = currentBucket();
+  useEffect(() => {
+    if (!filters.month) {
+      updateFilter("month", defaultBucket);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeMonth = filters.month ?? defaultBucket;
+
   const cards = useQuery({
     queryKey: ["cards"],
     queryFn: () => listCards(token!),
@@ -123,25 +138,70 @@ export function DashboardPage() {
   const { data: allTransactions, isLoading, isError, error } =
     useDecryptedTransactions();
 
-  const filtered = useMemo(
-    () => filterTransactions(allTransactions, filters),
-    [allTransactions, filters]
-  );
+  // Apply filters then sort by date descending
+  const filtered = useMemo(() => {
+    const matched = filterTransactions(allTransactions, filters);
+    return sortByDateDescending(matched);
+  }, [allTransactions, filters]);
 
   const totalAmount = useMemo(
     () => filtered.reduce((sum, tx) => sum + tx.amount, 0),
     [filtered]
   );
 
+  function goToPreviousMonth() {
+    updateFilter("month", navigateMonth(activeMonth, -1));
+  }
+
+  function goToNextMonth() {
+    updateFilter("month", navigateMonth(activeMonth, 1));
+  }
+
+  function goToCurrentMonth() {
+    updateFilter("month", defaultBucket);
+  }
+
+  const isCurrentMonth = activeMonth === defaultBucket;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          All data is decrypted client-side &middot;{" "}
-          {filtered.length} transaction{filtered.length !== 1 ? "s" : ""}
-          {hasActiveFilters ? " (filtered)" : ""}
-        </p>
+      {/* Header with month navigation */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            All data is decrypted client-side &middot;{" "}
+            {filtered.length} transaction{filtered.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+
+        {/* Month pagination */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={goToPreviousMonth}
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
+            aria-label="Previous month"
+          >
+            &larr;
+          </button>
+          <button
+            onClick={goToCurrentMonth}
+            className={`rounded-md px-3 py-1 text-sm font-medium ${
+              isCurrentMonth
+                ? "bg-blue-600 text-white"
+                : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            {formatBucket(activeMonth)}
+          </button>
+          <button
+            onClick={goToNextMonth}
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
+            aria-label="Next month"
+          >
+            &rarr;
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -226,7 +286,9 @@ export function DashboardPage() {
                     {tx.merchant}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {tx.timestamp_bucket} &middot; {tx.category}
+                    {formatTransactionDate(tx.created_at)}
+                    {" · "}
+                    {tx.category}
                     {" · "}
                     <span className="text-gray-400">
                       {tx.card_id.slice(0, 8)}...
