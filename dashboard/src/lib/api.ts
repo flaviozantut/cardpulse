@@ -1,4 +1,4 @@
-import type { ApiResponse, Card, CreateCardRequest, LoginRequest, LoginResponse, Transaction, UpdateTransactionRequest } from "../types/api";
+import type { ApiResponse, Card, CreateCardRequest, CreateTransactionRequest, LoginRequest, LoginResponse, Transaction, UpdateTransactionRequest } from "../types/api";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
@@ -98,6 +98,34 @@ export async function listTransactions(
   const path = qs ? `/v1/transactions?${qs}` : "/v1/transactions";
 
   return apiFetch<Transaction[]>(path, { headers: headers(token) });
+}
+
+export async function createTransaction(
+  token: string,
+  payload: CreateTransactionRequest | CreateTransactionRequest[],
+): Promise<Transaction | Transaction[]> {
+  return apiFetch<Transaction | Transaction[]>("/v1/transactions", {
+    method: "POST",
+    headers: headers(token),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteTransaction(
+  token: string,
+  id: string,
+): Promise<void> {
+  const res = await fetch(`${BASE_URL}/v1/transactions/${id}`, {
+    method: "DELETE",
+    headers: headers(token),
+  });
+
+  if (!res.ok) {
+    const body = await res.json();
+    const msg = body?.error?.message ?? res.statusText;
+    const code = body?.error?.code ?? "UNKNOWN";
+    throw new ApiClientError(msg, code, res.status);
+  }
 }
 
 export async function updateTransaction(

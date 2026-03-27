@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { CardsPage } from "./pages/CardsPage";
+import { TransactionsPage } from "./pages/TransactionsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { useAuth } from "./hooks/useAuth";
 import { useTokenRefresh } from "./hooks/useTokenRefresh";
@@ -57,6 +58,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <CardsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/transactions"
+                element={
+                  <ProtectedRoute>
+                    <TransactionsPage />
                   </ProtectedRoute>
                 }
               />
