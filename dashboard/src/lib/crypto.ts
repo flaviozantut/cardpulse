@@ -21,7 +21,6 @@ const TAG_LENGTH_BITS = 128;
 /** AES-GCM authentication tag length in bytes. */
 const TAG_LENGTH_BYTES = 16;
 
-
 /** Parameters for DEK derivation via PBKDF2. */
 export interface DekParams {
   iterations?: number;
