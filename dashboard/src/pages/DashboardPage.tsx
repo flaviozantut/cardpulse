@@ -6,9 +6,9 @@
  * Defaults to the current month with prev/next month navigation.
  */
 
-import { useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { listCards, listTransactions } from "../lib/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { listCards, listTransactions, updateTransaction } from "../lib/api";
 import { decrypt } from "../lib/crypto";
 import { decryptCard, formatCardLabel } from "../lib/card-data";
 import { filterTransactions } from "../lib/filters";
@@ -19,10 +19,15 @@ import {
   currentBucket,
   formatBucket,
 } from "../lib/transactions";
+import {
+  buildCategoryPayload,
+  extractUniqueCategories,
+} from "../lib/categories";
 import { useAuth } from "../hooks/useAuth";
 import { useFilters } from "../hooks/useFilters";
 import { FilterBar } from "../components/FilterBar";
 import { SpendingCharts } from "../components/SpendingCharts";
+import { CategoryEditor } from "../components/CategoryEditor";
 import type { Transaction } from "../types/api";
 import type { DecryptedTransaction } from "../types/dashboard";
 
@@ -116,6 +121,56 @@ function formatBRL(value: number): string {
   });
 }
 
+/**
+ * Manages category update mutations for individual transactions.
+ *
+ * Handles re-encrypting the payload with the new category, PUTting
+ * to the API, and invalidating queries to refresh the decrypted data.
+ */
+function useCategoryUpdate() {
+  const { token, dek } = useAuth();
+  const queryClient = useQueryClient();
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+
+  const handleCategoryUpdate = useCallback(
+    async (tx: DecryptedTransaction, newCategory: string) => {
+      if (!token || !dek) return;
+
+      setSavingIds((prev) => new Set(prev).add(tx.id));
+
+      try {
+        const encryptedPayload = await buildCategoryPayload(
+          tx.description,
+          newCategory,
+          dek,
+        );
+
+        await updateTransaction(token, tx.id, {
+          card_id: tx.card_id,
+          encrypted_data: encryptedPayload.encrypted_data,
+          iv: encryptedPayload.iv,
+          auth_tag: encryptedPayload.auth_tag,
+          timestamp_bucket: tx.timestamp_bucket,
+        });
+
+        // Invalidate queries to re-fetch and re-decrypt
+        await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      } catch (error) {
+        console.error("Failed to update category:", error);
+      } finally {
+        setSavingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(tx.id);
+          return next;
+        });
+      }
+    },
+    [token, dek, queryClient],
+  );
+
+  return { handleCategoryUpdate, savingIds };
+}
+
 export function DashboardPage() {
   const { token, dek } = useAuth();
   const { filters, updateFilter, clearFilters, hasActiveFilters } =
@@ -156,6 +211,13 @@ export function DashboardPage() {
 
   const { data: allTransactions, isLoading, isError, error } =
     useDecryptedTransactions();
+
+  const { handleCategoryUpdate, savingIds } = useCategoryUpdate();
+
+  const categorySuggestions = useMemo(
+    () => extractUniqueCategories(allTransactions),
+    [allTransactions],
+  );
 
   // Apply filters then sort by date descending
   const filtered = useMemo(() => {
@@ -308,10 +370,17 @@ export function DashboardPage() {
                   <p className="truncate text-sm font-medium text-gray-900">
                     {tx.merchant}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="flex items-center gap-1 text-xs text-gray-500">
                     {formatTransactionDate(tx.created_at)}
                     {" · "}
-                    {tx.category}
+                    <CategoryEditor
+                      category={tx.category}
+                      suggestions={categorySuggestions}
+                      onSave={(newCategory) =>
+                        handleCategoryUpdate(tx, newCategory)
+                      }
+                      isSaving={savingIds.has(tx.id)}
+                    />
                     {" · "}
                     <span className="text-gray-400">
                       {cardLabels.get(tx.card_id) ?? `${tx.card_id.slice(0, 8)}...`}

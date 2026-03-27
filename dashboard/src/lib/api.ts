@@ -1,4 +1,4 @@
-import type { ApiResponse, Card, CreateCardRequest, LoginRequest, LoginResponse, Transaction } from "../types/api";
+import type { ApiResponse, Card, CreateCardRequest, LoginRequest, LoginResponse, Transaction, UpdateTransactionRequest } from "../types/api";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
@@ -98,4 +98,16 @@ export async function listTransactions(
   const path = qs ? `/v1/transactions?${qs}` : "/v1/transactions";
 
   return apiFetch<Transaction[]>(path, { headers: headers(token) });
+}
+
+export async function updateTransaction(
+  token: string,
+  id: string,
+  payload: UpdateTransactionRequest,
+): Promise<Transaction> {
+  return apiFetch<Transaction>(`/v1/transactions/${id}`, {
+    method: "PUT",
+    headers: headers(token),
+    body: JSON.stringify(payload),
+  });
 }
