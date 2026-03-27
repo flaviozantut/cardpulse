@@ -1,4 +1,4 @@
-import type { ApiResponse, Card, LoginRequest, LoginResponse, Transaction } from "../types/api";
+import type { ApiResponse, Card, CreateCardRequest, LoginRequest, LoginResponse, Transaction } from "../types/api";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
@@ -57,6 +57,31 @@ export async function refreshToken(token: string): Promise<{ token: string }> {
 
 export async function listCards(token: string): Promise<Card[]> {
   return apiFetch<Card[]>("/v1/cards", { headers: headers(token) });
+}
+
+export async function createCard(
+  token: string,
+  payload: CreateCardRequest,
+): Promise<Card> {
+  return apiFetch<Card>("/v1/cards", {
+    method: "POST",
+    headers: headers(token),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCard(token: string, id: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/v1/cards/${id}`, {
+    method: "DELETE",
+    headers: headers(token),
+  });
+
+  if (!res.ok) {
+    const body = await res.json();
+    const msg = body?.error?.message ?? res.statusText;
+    const code = body?.error?.code ?? "UNKNOWN";
+    throw new ApiClientError(msg, code, res.status);
+  }
 }
 
 // ── Transactions ────────────────────────────────────────────────────────────

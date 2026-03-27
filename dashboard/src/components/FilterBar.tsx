@@ -17,6 +17,8 @@ interface FilterBarProps {
   onClear: () => void;
   hasActiveFilters: boolean;
   transactions: DecryptedTransaction[];
+  /** Map of card_id → display label for the card selector. */
+  cardLabels?: Map<string, string>;
 }
 
 /** Extracts unique sorted values from a field across transactions. */
@@ -34,6 +36,7 @@ export function FilterBar({
   onClear,
   hasActiveFilters,
   transactions,
+  cardLabels,
 }: FilterBarProps) {
   const months = uniqueValues(transactions, "timestamp_bucket");
   const categories = uniqueValues(transactions, "category");
@@ -102,7 +105,7 @@ export function FilterBar({
             <option value="">All cards</option>
             {cardIds.map((c) => (
               <option key={c} value={c}>
-                {c.slice(0, 8)}...
+                {cardLabels?.get(c) ?? `${c.slice(0, 8)}...`}
               </option>
             ))}
           </select>

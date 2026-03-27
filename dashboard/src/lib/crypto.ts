@@ -18,6 +18,9 @@ const IV_LENGTH = 12;
 /** AES-GCM authentication tag length in bits. */
 const TAG_LENGTH_BITS = 128;
 
+/** AES-GCM authentication tag length in bytes. */
+const TAG_LENGTH_BYTES = 16;
+
 
 /** Parameters for DEK derivation via PBKDF2. */
 export interface DekParams {
@@ -199,5 +202,60 @@ export async function decrypt(
     throw new CryptoError(
       "Decryption failed: wrong key or tampered data"
     );
+  }
+}
+
+/** Result of encrypting plaintext with AES-256-GCM. */
+export interface EncryptResult {
+  encrypted_data: string;
+  iv: string;
+  auth_tag: string;
+}
+
+/**
+ * Encrypts a plaintext string using AES-256-GCM with the DEK.
+ *
+ * Generates a random 12-byte IV for each encryption. The output is split
+ * into separate ciphertext and auth tag fields to match the CardPulse API
+ * format expected by the server.
+ *
+ * @param plaintext - The UTF-8 string to encrypt
+ * @param dek - Raw DEK as Uint8Array (32 bytes)
+ * @returns Base64-encoded encrypted_data, iv, and auth_tag
+ *
+ * @throws {CryptoError} If encryption fails
+ */
+export async function encrypt(
+  plaintext: string,
+  dek: Uint8Array
+): Promise<EncryptResult> {
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    dek.buffer as ArrayBuffer,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"]
+  );
+
+  try {
+    const encrypted = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv.buffer as ArrayBuffer, tagLength: TAG_LENGTH_BITS },
+      key,
+      new TextEncoder().encode(plaintext)
+    );
+
+    const encBytes = new Uint8Array(encrypted);
+    const ciphertext = encBytes.slice(0, encBytes.length - TAG_LENGTH_BYTES);
+    const authTag = encBytes.slice(encBytes.length - TAG_LENGTH_BYTES);
+
+    return {
+      encrypted_data: bytesToBase64(ciphertext),
+      iv: bytesToBase64(iv),
+      auth_tag: bytesToBase64(authTag),
+    };
+  } catch {
+    throw new CryptoError("Encryption failed");
   }
 }

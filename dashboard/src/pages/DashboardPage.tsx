@@ -10,6 +10,7 @@ import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listCards, listTransactions } from "../lib/api";
 import { decrypt } from "../lib/crypto";
+import { decryptCard, formatCardLabel } from "../lib/card-data";
 import { filterTransactions } from "../lib/filters";
 import {
   sortByDateDescending,
@@ -116,7 +117,7 @@ function formatBRL(value: number): string {
 }
 
 export function DashboardPage() {
-  const { token } = useAuth();
+  const { token, dek } = useAuth();
   const { filters, updateFilter, clearFilters, hasActiveFilters } =
     useFilters();
 
@@ -135,6 +136,23 @@ export function DashboardPage() {
     queryFn: () => listCards(token!),
     enabled: !!token,
   });
+
+  const decryptedCards = useQuery({
+    queryKey: ["cards:decrypted", cards.data?.length],
+    queryFn: async () => {
+      if (!cards.data || !dek) return [];
+      return Promise.all(cards.data.map((c) => decryptCard(c, dek)));
+    },
+    enabled: !!cards.data && !!dek,
+  });
+
+  const cardLabels = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of decryptedCards.data ?? []) {
+      map.set(c.id, formatCardLabel(c.label, c.last_digits));
+    }
+    return map;
+  }, [decryptedCards.data]);
 
   const { data: allTransactions, isLoading, isError, error } =
     useDecryptedTransactions();
@@ -243,6 +261,7 @@ export function DashboardPage() {
         onClear={clearFilters}
         hasActiveFilters={hasActiveFilters}
         transactions={allTransactions}
+        cardLabels={cardLabels}
       />
 
       {/* Transaction list */}
@@ -295,7 +314,7 @@ export function DashboardPage() {
                     {tx.category}
                     {" · "}
                     <span className="text-gray-400">
-                      {tx.card_id.slice(0, 8)}...
+                      {cardLabels.get(tx.card_id) ?? `${tx.card_id.slice(0, 8)}...`}
                     </span>
                   </p>
                 </div>
