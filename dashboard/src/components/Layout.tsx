@@ -21,6 +21,12 @@ export function Layout() {
                 Dashboard
               </Link>
               <Link
+                to="/transactions"
+                className="text-sm text-gray-600 hover:text-gray-900"
+              >
+                Transactions
+              </Link>
+              <Link
                 to="/cards"
                 className="text-sm text-gray-600 hover:text-gray-900"
               >

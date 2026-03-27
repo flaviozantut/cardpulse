@@ -42,6 +42,15 @@ export interface CreateCardRequest {
   auth_tag: string;
 }
 
+/** Payload for creating a new transaction (encrypted client-side). */
+export interface CreateTransactionRequest {
+  card_id: string;
+  encrypted_data: string;
+  iv: string;
+  auth_tag: string;
+  timestamp_bucket: string;
+}
+
 /** Payload for updating a transaction (re-encrypted client-side). */
 export interface UpdateTransactionRequest {
   card_id: string;
