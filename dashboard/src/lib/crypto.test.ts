@@ -3,6 +3,7 @@ import {
   deriveKey,
   unwrapDek,
   decrypt,
+  encrypt,
   base64ToBytes,
   bytesToBase64,
 } from "./crypto";
@@ -517,6 +518,55 @@ describe("end-to-end: wrap → unwrap → encrypt → decrypt", () => {
 
     // 7. Decrypt the data
     const decrypted = await decrypt(ciphertextB64, encIvB64, authTagB64, unwrappedDek);
+
+    expect(decrypted).toBe(plaintext);
+  });
+});
+
+describe("encrypt", () => {
+  it("encrypts plaintext and returns base64 ciphertext, iv, and auth_tag", async () => {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const plaintext = "Nubank Mastercard ...4567";
+
+    const result = await encrypt(plaintext, dek);
+
+    expect(result.encrypted_data).toBeTruthy();
+    expect(result.iv).toBeTruthy();
+    expect(result.auth_tag).toBeTruthy();
+
+    // IV should be 12 bytes = 16 base64 chars
+    expect(base64ToBytes(result.iv).length).toBe(12);
+    // Auth tag should be 16 bytes
+    expect(base64ToBytes(result.auth_tag).length).toBe(16);
+  });
+
+  it("produces output that can be decrypted", async () => {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const plaintext = "Bradesco Visa ...1234 — Padaria R$ 8,50";
+
+    const { encrypted_data, iv, auth_tag } = await encrypt(plaintext, dek);
+    const decrypted = await decrypt(encrypted_data, iv, auth_tag, dek);
+
+    expect(decrypted).toBe(plaintext);
+  });
+
+  it("produces different ciphertexts for same plaintext (random IV)", async () => {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const plaintext = "Same content";
+
+    const result1 = await encrypt(plaintext, dek);
+    const result2 = await encrypt(plaintext, dek);
+
+    expect(result1.iv).not.toBe(result2.iv);
+    expect(result1.encrypted_data).not.toBe(result2.encrypted_data);
+  });
+
+  it("handles UTF-8 content with special characters", async () => {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const plaintext = '{"label":"Cartão São Paulo","last_digits":"9876","brand":"Visa"}';
+
+    const { encrypted_data, iv, auth_tag } = await encrypt(plaintext, dek);
+    const decrypted = await decrypt(encrypted_data, iv, auth_tag, dek);
 
     expect(decrypted).toBe(plaintext);
   });

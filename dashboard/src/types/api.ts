@@ -35,6 +35,13 @@ export interface Card {
   created_at: string;
 }
 
+/** Payload for creating a new card (encrypted client-side). */
+export interface CreateCardRequest {
+  encrypted_data: string;
+  iv: string;
+  auth_tag: string;
+}
+
 /** Transaction as returned by the API (encrypted). */
 export interface Transaction {
   id: string;

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { CardsPage } from "./pages/CardsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { useAuth } from "./hooks/useAuth";
 import { useTokenRefresh } from "./hooks/useTokenRefresh";
@@ -48,6 +49,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/cards"
+                element={
+                  <ProtectedRoute>
+                    <CardsPage />
                   </ProtectedRoute>
                 }
               />
