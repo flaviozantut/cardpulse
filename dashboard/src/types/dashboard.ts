@@ -6,7 +6,7 @@
  */
 
 /** How a transaction's category was determined. */
-export type CategorySource = "manual" | "auto_keyword" | "auto_learned";
+export type CategorySource = "manual" | "auto_keyword" | "auto_learned" | "auto_fuzzy";
 
 /** A transaction after client-side decryption. */
 export interface DecryptedTransaction {
