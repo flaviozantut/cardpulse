@@ -9,6 +9,7 @@ import { decrypt, encrypt } from "./crypto";
 import type { EncryptResult } from "./crypto";
 import type { Transaction } from "../types/api";
 import type { DecryptedTransaction } from "../types/dashboard";
+import { autoCategory } from "./categoryRules";
 
 /** Input data for creating an encrypted transaction. */
 export interface TransactionFormData {
@@ -38,14 +39,21 @@ export async function decryptTransaction(
 
     try {
       const parsed = JSON.parse(plaintext);
+      const merchant: string = parsed.merchant ?? parsed.name ?? plaintext;
+      const rawCategory: string = parsed.category ?? "uncategorized";
+      // Apply keyword auto-categorization when no category has been set
+      const category =
+        rawCategory === "uncategorized"
+          ? (autoCategory(merchant) ?? "uncategorized")
+          : rawCategory;
       return {
         id: tx.id,
         card_id: tx.card_id,
         timestamp_bucket: tx.timestamp_bucket,
         created_at: tx.created_at,
-        merchant: parsed.merchant ?? parsed.name ?? plaintext,
+        merchant,
         amount: parsed.amount ?? 0,
-        category: parsed.category ?? "uncategorized",
+        category,
         description: plaintext,
       };
     } catch {
