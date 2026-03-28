@@ -14,6 +14,7 @@ use crate::auth::handler::{login, refresh, register, rotate_key};
 use crate::handlers::cards::{create_card, delete_card, list_cards, update_card};
 use crate::handlers::health::health_check;
 use crate::handlers::me::me;
+use crate::handlers::sync::{export, import};
 use crate::handlers::test_blob::{create_blob, get_blob};
 use crate::handlers::transactions::{
     create_transaction, delete_transaction, list_transactions, update_transaction,
@@ -74,6 +75,8 @@ pub fn build_router(state: AppState) -> Router {
             "/v1/transactions/:id",
             axum::routing::put(update_transaction).delete(delete_transaction),
         )
+        .route("/v1/sync/export", axum::routing::get(export))
+        .route("/v1/sync/import", axum::routing::post(import))
         .route("/v1/test", axum::routing::post(create_blob))
         .route("/v1/test/:id", axum::routing::get(get_blob))
         .layer(cors)
