@@ -8,8 +8,10 @@
 import { decrypt, encrypt } from "./crypto";
 import type { EncryptResult } from "./crypto";
 import type { Transaction } from "../types/api";
-import type { DecryptedTransaction } from "../types/dashboard";
+import type { CategorySource, DecryptedTransaction } from "../types/dashboard";
 import { autoCategory } from "./categoryRules";
+import { lookupOverride } from "./overrides";
+import type { CategoryOverrides } from "./overrides";
 
 /** Input data for creating an encrypted transaction. */
 export interface TransactionFormData {
@@ -21,13 +23,24 @@ export interface TransactionFormData {
 /**
  * Decrypts a single transaction's encrypted_data and extracts structured fields.
  *
+ * Category resolution order (highest priority first):
+ * 1. Explicit manual category stored in the payload (no source tag)
+ * 2. Learned override from the merchant→category map (`auto_learned`)
+ * 3. Keyword dictionary match (`auto_keyword`)
+ * 4. Falls back to `"uncategorized"` (no source tag)
+ *
  * Tries to parse decrypted plaintext as JSON first (structured iOS data).
  * Falls back to plain-text parsing with R$ amount extraction.
  * Returns a safe fallback on decryption failure.
+ *
+ * @param tx - Encrypted transaction from the API
+ * @param dek - Raw DEK bytes for decryption
+ * @param overrides - Optional merchant→category override map (from `/v1/config/category_overrides`)
  */
 export async function decryptTransaction(
   tx: Transaction,
   dek: Uint8Array,
+  overrides: CategoryOverrides = {},
 ): Promise<DecryptedTransaction> {
   try {
     const plaintext = await decrypt(
@@ -41,11 +54,31 @@ export async function decryptTransaction(
       const parsed = JSON.parse(plaintext);
       const merchant: string = parsed.merchant ?? parsed.name ?? plaintext;
       const rawCategory: string = parsed.category ?? "uncategorized";
-      // Apply keyword auto-categorization when no category has been set
-      const category =
-        rawCategory === "uncategorized"
-          ? (autoCategory(merchant) ?? "uncategorized")
-          : rawCategory;
+
+      let category: string;
+      let category_source: CategorySource | undefined;
+
+      if (rawCategory !== "uncategorized") {
+        // Explicit category in payload — treat as manual (no source badge)
+        category = rawCategory;
+      } else {
+        // Check learned overrides first (highest priority among auto sources)
+        const overrideMatch = lookupOverride(overrides, merchant);
+        if (overrideMatch) {
+          category = overrideMatch;
+          category_source = "auto_learned";
+        } else {
+          // Fall back to keyword dictionary
+          const keywordMatch = autoCategory(merchant);
+          if (keywordMatch) {
+            category = keywordMatch;
+            category_source = "auto_keyword";
+          } else {
+            category = "uncategorized";
+          }
+        }
+      }
+
       return {
         id: tx.id,
         card_id: tx.card_id,
@@ -54,6 +87,7 @@ export async function decryptTransaction(
         merchant,
         amount: parsed.amount ?? 0,
         category,
+        category_source,
         description: plaintext,
       };
     } catch {

@@ -19,6 +19,7 @@ use crate::handlers::test_blob::{create_blob, get_blob};
 use crate::handlers::transactions::{
     create_transaction, delete_transaction, list_transactions, update_transaction,
 };
+use crate::handlers::user_config::{get_config, put_config};
 use crate::middleware::rate_limit::{rate_limit, RateLimiter};
 use crate::state::AppState;
 
@@ -77,6 +78,10 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/v1/sync/export", axum::routing::get(export))
         .route("/v1/sync/import", axum::routing::post(import))
+        .route(
+            "/v1/config/:type",
+            axum::routing::get(get_config).put(put_config),
+        )
         .route("/v1/test", axum::routing::post(create_blob))
         .route("/v1/test/:id", axum::routing::get(get_blob))
         .layer(cors)

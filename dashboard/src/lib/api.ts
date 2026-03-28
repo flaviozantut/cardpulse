@@ -1,4 +1,4 @@
-import type { ApiResponse, Card, CreateCardRequest, CreateTransactionRequest, LoginRequest, LoginResponse, RotateKeyRequest, Transaction, UpdateTransactionRequest } from "../types/api";
+import type { ApiResponse, Card, CreateCardRequest, CreateTransactionRequest, LoginRequest, LoginResponse, RotateKeyRequest, Transaction, UpdateTransactionRequest, UpsertConfigRequest, UserConfig } from "../types/api";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
@@ -137,6 +137,29 @@ export async function deleteTransaction(
     const code = body?.error?.code ?? "UNKNOWN";
     throw new ApiClientError(msg, code, res.status);
   }
+}
+
+// ── User Config ─────────────────────────────────────────────────────────────
+
+export async function getConfig(
+  token: string,
+  configType: string,
+): Promise<UserConfig> {
+  return apiFetch<UserConfig>(`/v1/config/${configType}`, {
+    headers: headers(token),
+  });
+}
+
+export async function putConfig(
+  token: string,
+  configType: string,
+  payload: UpsertConfigRequest,
+): Promise<UserConfig> {
+  return apiFetch<UserConfig>(`/v1/config/${configType}`, {
+    method: "PUT",
+    headers: headers(token),
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function updateTransaction(

@@ -5,6 +5,9 @@
  * they contain plaintext fields extracted from `encrypted_data`.
  */
 
+/** How a transaction's category was determined. */
+export type CategorySource = "manual" | "auto_keyword" | "auto_learned";
+
 /** A transaction after client-side decryption. */
 export interface DecryptedTransaction {
   id: string;
@@ -14,6 +17,8 @@ export interface DecryptedTransaction {
   merchant: string;
   amount: number;
   category: string;
+  /** How the category was assigned — only present for auto-assigned categories. */
+  category_source?: CategorySource;
   description: string;
 }
 
