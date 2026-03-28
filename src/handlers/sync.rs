@@ -19,7 +19,9 @@ use crate::{
     models::{card::CardResponse, transaction::TransactionResponse},
     repositories::{
         card_repo::PgCardRepository,
-        traits::{CardRepository, NewCard, NewTransaction, TransactionFilters, TransactionRepository},
+        traits::{
+            CardRepository, NewCard, NewTransaction, TransactionFilters, TransactionRepository,
+        },
         transaction_repo::PgTransactionRepository,
     },
     state::AppState,

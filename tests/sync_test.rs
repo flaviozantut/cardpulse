@@ -232,13 +232,11 @@ async fn test_import_with_cards_and_transactions_creates_all_records() {
     );
     let body: serde_json::Value = response.json();
     assert_eq!(
-        body["data"]["cards_imported"],
-        1,
+        body["data"]["cards_imported"], 1,
         "Expected 1 card imported"
     );
     assert_eq!(
-        body["data"]["transactions_imported"],
-        2,
+        body["data"]["transactions_imported"], 2,
         "Expected 2 transactions imported"
     );
 
@@ -250,7 +248,10 @@ async fn test_import_with_cards_and_transactions_creates_all_records() {
     let export_body: serde_json::Value = export_response.json();
     assert_eq!(export_body["data"]["cards"].as_array().unwrap().len(), 1);
     assert_eq!(
-        export_body["data"]["transactions"].as_array().unwrap().len(),
+        export_body["data"]["transactions"]
+            .as_array()
+            .unwrap()
+            .len(),
         2
     );
 }
