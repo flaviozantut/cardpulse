@@ -10,7 +10,7 @@ use axum::http::{header, Method};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
-use crate::auth::handler::{login, refresh, register};
+use crate::auth::handler::{login, refresh, register, rotate_key};
 use crate::handlers::cards::{create_card, delete_card, list_cards, update_card};
 use crate::handlers::health::health_check;
 use crate::handlers::me::me;
@@ -56,6 +56,7 @@ pub fn build_router(state: AppState) -> Router {
             )),
         )
         .route("/auth/refresh", axum::routing::post(refresh))
+        .route("/v1/key/rotate", axum::routing::post(rotate_key))
         .route("/v1/me", axum::routing::get(me))
         .route(
             "/v1/cards",
