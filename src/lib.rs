@@ -12,5 +12,6 @@ pub mod middleware;
 pub mod models;
 pub mod repositories;
 pub mod router;
+pub mod sms;
 pub mod state;
 pub mod validation;
