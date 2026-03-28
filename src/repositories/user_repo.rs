@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     error::AppError,
     models::user::User,
-    repositories::traits::{NewUser, UserRepository},
+    repositories::traits::{NewUser, UpdateDek, UserRepository},
 };
 
 /// Postgres-backed user repository.
@@ -57,5 +57,25 @@ impl UserRepository for PgUserRepository {
         .await
         .map_err(|e| AppError::InternalError(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("user with email '{email}' not found")))
+    }
+
+    async fn update_dek(&self, user_id: Uuid, data: UpdateDek) -> Result<(), AppError> {
+        let rows = sqlx::query(
+            "UPDATE users SET wrapped_dek = $1, dek_salt = $2, dek_params = $3 WHERE id = $4",
+        )
+        .bind(&data.wrapped_dek)
+        .bind(&data.dek_salt)
+        .bind(&data.dek_params)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalError(e.to_string()))?
+        .rows_affected();
+
+        if rows == 0 {
+            return Err(AppError::NotFound(format!("user '{user_id}' not found")));
+        }
+
+        Ok(())
     }
 }

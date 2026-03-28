@@ -1,4 +1,4 @@
-import type { ApiResponse, Card, CreateCardRequest, CreateTransactionRequest, LoginRequest, LoginResponse, Transaction, UpdateTransactionRequest } from "../types/api";
+import type { ApiResponse, Card, CreateCardRequest, CreateTransactionRequest, LoginRequest, LoginResponse, RotateKeyRequest, Transaction, UpdateTransactionRequest } from "../types/api";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
@@ -50,6 +50,17 @@ export async function refreshToken(token: string): Promise<{ token: string }> {
   return apiFetch<{ token: string }>("/auth/refresh", {
     method: "POST",
     headers: headers(token),
+  });
+}
+
+export async function rotateKey(
+  token: string,
+  payload: RotateKeyRequest,
+): Promise<void> {
+  await apiFetch<Record<string, never>>("/v1/key/rotate", {
+    method: "POST",
+    headers: headers(token),
+    body: JSON.stringify(payload),
   });
 }
 

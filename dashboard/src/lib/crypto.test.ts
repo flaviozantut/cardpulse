@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   deriveKey,
   unwrapDek,
+  wrapDek,
+  generateDekSalt,
   decrypt,
   encrypt,
   base64ToBytes,
@@ -519,6 +521,90 @@ describe("end-to-end: wrap → unwrap → encrypt → decrypt", () => {
     // 7. Decrypt the data
     const decrypted = await decrypt(ciphertextB64, encIvB64, authTagB64, unwrappedDek);
 
+    expect(decrypted).toBe(plaintext);
+  });
+});
+
+describe("generateDekSalt", () => {
+  it("returns a non-empty base64 string", () => {
+    const salt = generateDekSalt();
+    expect(typeof salt).toBe("string");
+    expect(salt.length).toBeGreaterThan(0);
+  });
+
+  it("returns a 16-byte salt encoded as base64", () => {
+    const salt = generateDekSalt();
+    expect(base64ToBytes(salt).length).toBe(16);
+  });
+
+  it("produces different values on each call", () => {
+    const salt1 = generateDekSalt();
+    const salt2 = generateDekSalt();
+    expect(salt1).not.toBe(salt2);
+  });
+});
+
+describe("wrapDek", () => {
+  it("wraps a DEK and the result can be unwrapped with the same password", async () => {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const password = "new-master-password";
+    const salt = generateDekSalt();
+    const params = { iterations: 1000 };
+
+    const wrappedDekB64 = await wrapDek(dek, password, salt, params);
+
+    // Unwrap using the same password
+    const derivedKey = await deriveKey(password, salt, params);
+    const unwrapped = await unwrapDek(wrappedDekB64, derivedKey);
+
+    expect(unwrapped).toEqual(dek);
+  });
+
+  it("produces different ciphertexts for same inputs (random IV)", async () => {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const password = "same-password";
+    const salt = generateDekSalt();
+    const params = { iterations: 1000 };
+
+    const wrapped1 = await wrapDek(dek, password, salt, params);
+    const wrapped2 = await wrapDek(dek, password, salt, params);
+
+    expect(wrapped1).not.toBe(wrapped2);
+  });
+
+  it("fails to unwrap with a different password", async () => {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const salt = generateDekSalt();
+    const params = { iterations: 1000 };
+
+    const wrappedDekB64 = await wrapDek(dek, "correct-password", salt, params);
+
+    const wrongKey = await deriveKey("wrong-password", salt, params);
+    await expect(unwrapDek(wrappedDekB64, wrongKey)).rejects.toThrow(
+      "Decryption failed"
+    );
+  });
+
+  it("round-trip: wrap with new password, unwrap, re-encrypt data, decrypt", async () => {
+    // Simulate key rotation: old DEK still decrypts existing data after re-wrap
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const plaintext = '{"amount":99.99,"merchant":"Pão de Açúcar"}';
+
+    // Encrypt some data with the DEK
+    const { encrypted_data, iv, auth_tag } = await encrypt(plaintext, dek);
+
+    // Rotate: re-wrap DEK under new master password
+    const newPassword = "brand-new-master-password";
+    const newSalt = generateDekSalt();
+    const params = { iterations: 1000 };
+    const newWrappedDekB64 = await wrapDek(dek, newPassword, newSalt, params);
+
+    // Login with new password, unwrap DEK
+    const newDerivedKey = await deriveKey(newPassword, newSalt, params);
+    const recoveredDek = await unwrapDek(newWrappedDekB64, newDerivedKey);
+
+    // Existing data still decrypts correctly
+    const decrypted = await decrypt(encrypted_data, iv, auth_tag, recoveredDek);
     expect(decrypted).toBe(plaintext);
   });
 });

@@ -1,9 +1,10 @@
 //! Authentication HTTP handlers.
 //!
 //! # Endpoints
-//! - `POST /auth/register` — create a new user account
-//! - `POST /auth/login`    — verify credentials, return JWT + wrapped DEK
-//! - `POST /auth/refresh`  — renew a valid JWT before expiration
+//! - `POST /auth/register`   — create a new user account
+//! - `POST /auth/login`      — verify credentials, return JWT + wrapped DEK
+//! - `POST /auth/refresh`    — renew a valid JWT before expiration
+//! - `POST /v1/key/rotate`   — re-wrap the DEK under a new master password
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -19,7 +20,7 @@ use crate::{
     error::AppError,
     models::user::CreateUser,
     repositories::{
-        traits::{NewUser, UserRepository},
+        traits::{NewUser, UpdateDek, UserRepository},
         user_repo::PgUserRepository,
     },
     state::AppState,
@@ -121,4 +122,45 @@ pub async fn refresh(
 ) -> Result<impl IntoResponse, AppError> {
     let token = create_token(user_id.0, &state.jwt_secret, state.jwt_expiration_hours)?;
     Ok(Json(json!({ "data": { "token": token } })))
+}
+
+/// Request body for `POST /v1/key/rotate`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RotateKeyRequest {
+    pub new_wrapped_dek: String,
+    pub new_dek_salt: String,
+    pub new_dek_params: String,
+}
+
+/// `POST /v1/key/rotate` — replace the wrapped DEK under a new master password.
+///
+/// The client derives a new wrapping key from the new master password,
+/// re-wraps the existing DEK, and submits the result here. The server
+/// stores the new values without ever seeing the plaintext DEK.
+///
+/// # Responses
+/// - `200 OK` — `{ "data": {} }`
+/// - `401 Unauthorized` — missing or invalid token
+/// - `422 Unprocessable Entity` — missing or malformed fields
+pub async fn rotate_key(
+    State(state): State<AppState>,
+    AuthUser(user_id): AuthUser,
+    Json(payload): Json<RotateKeyRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let new_wrapped_dek = validate_base64(&payload.new_wrapped_dek, "new_wrapped_dek")?;
+    let new_dek_salt = validate_base64(&payload.new_dek_salt, "new_dek_salt")?;
+
+    let repo = PgUserRepository::new(state.pool);
+    repo.update_dek(
+        user_id.0,
+        UpdateDek {
+            wrapped_dek: new_wrapped_dek,
+            dek_salt: new_dek_salt,
+            dek_params: payload.new_dek_params,
+        },
+    )
+    .await?;
+
+    Ok(Json(json!({ "data": {} })))
 }

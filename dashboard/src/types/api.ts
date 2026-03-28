@@ -51,6 +51,13 @@ export interface CreateTransactionRequest {
   timestamp_bucket: string;
 }
 
+/** Payload for rotating the master password (re-wrapped DEK). */
+export interface RotateKeyRequest {
+  new_wrapped_dek: string;
+  new_dek_salt: string;
+  new_dek_params: string;
+}
+
 /** Payload for updating a transaction (re-encrypted client-side). */
 export interface UpdateTransactionRequest {
   card_id: string;

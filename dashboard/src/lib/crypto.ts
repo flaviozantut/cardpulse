@@ -148,6 +148,84 @@ export async function unwrapDek(
 }
 
 /**
+ * Generates a fresh random 16-byte salt for DEK derivation.
+ *
+ * Use this when rotating the master password to produce a new salt
+ * for the new PBKDF2 derivation.
+ *
+ * @returns Base64-encoded 16-byte random salt
+ */
+export function generateDekSalt(): string {
+  return bytesToBase64(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+/**
+ * Wraps (encrypts) the DEK under a new master password via PBKDF2 + AES-256-GCM.
+ *
+ * Used during key rotation: the client unwraps the existing DEK with the old
+ * password, then calls this function to re-wrap it under the new password.
+ * The output is in the same format as the iOS client produces:
+ * `[12-byte IV] + [ciphertext + 16-byte auth tag]`.
+ *
+ * @param dek - The raw DEK bytes (32 bytes for AES-256)
+ * @param password - The new master password
+ * @param saltBase64 - Base64-encoded salt for PBKDF2 (generate fresh via `generateDekSalt`)
+ * @param params - Derivation parameters (iterations count)
+ * @returns Base64-encoded wrapped DEK ready to POST to `/v1/key/rotate`
+ *
+ * @throws {CryptoError} If wrapping fails
+ */
+export async function wrapDek(
+  dek: Uint8Array,
+  password: string,
+  saltBase64: string,
+  params: DekParams
+): Promise<string> {
+  const salt = base64ToBytes(saltBase64);
+  const iterations = params.iterations ?? DEFAULT_ITERATIONS;
+
+  const passwordKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  const wrappingKey = await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt.buffer as ArrayBuffer,
+      iterations,
+      hash: "SHA-256",
+    },
+    passwordKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"]
+  );
+
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+
+  try {
+    const wrapped = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv.buffer as ArrayBuffer, tagLength: TAG_LENGTH_BITS },
+      wrappingKey,
+      dek.buffer as ArrayBuffer
+    );
+
+    // Format: [12-byte IV] + [ciphertext + auth_tag]
+    const combined = new Uint8Array(IV_LENGTH + wrapped.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(wrapped), IV_LENGTH);
+
+    return bytesToBase64(combined);
+  } catch {
+    throw new CryptoError("Wrapping failed");
+  }
+}
+
+/**
  * Decrypts AES-256-GCM encrypted data using the DEK.
  *
  * The encrypted data format matches the CardPulse convention:

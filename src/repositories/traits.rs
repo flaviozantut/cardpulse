@@ -20,6 +20,13 @@ pub struct NewUser {
     pub dek_params: String,
 }
 
+/// Data needed to rotate a user's wrapped DEK.
+pub struct UpdateDek {
+    pub wrapped_dek: Vec<u8>,
+    pub dek_salt: Vec<u8>,
+    pub dek_params: String,
+}
+
 /// Persistence operations for the `users` table.
 #[async_trait]
 pub trait UserRepository: Send + Sync {
@@ -36,6 +43,16 @@ pub trait UserRepository: Send + Sync {
     /// - [`AppError::NotFound`] if no user with that email exists.
     /// - [`AppError::InternalError`] on database error.
     async fn find_by_email(&self, email: &str) -> Result<User, AppError>;
+
+    /// Replaces the wrapped DEK, salt, and params for the given user.
+    ///
+    /// The server never decrypts these values; it only stores them as-is
+    /// so the client can retrieve and unwrap them on next login.
+    ///
+    /// # Errors
+    /// - [`AppError::NotFound`] if no user with that ID exists.
+    /// - [`AppError::InternalError`] on database error.
+    async fn update_dek(&self, user_id: Uuid, data: UpdateDek) -> Result<(), AppError>;
 }
 
 /// Data needed to create a new card row.

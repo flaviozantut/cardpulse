@@ -3,6 +3,139 @@ mod common;
 use axum::http::StatusCode;
 use serde_json::json;
 
+// ── Key rotation tests ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_rotate_key_with_valid_payload_returns_200() {
+    // Arrange
+    let server = common::spawn_test_app().await;
+    let token = common::create_test_user_and_login(&server, "rotate").await;
+
+    // Act
+    let response = server
+        .post("/v1/key/rotate")
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&json!({
+            "new_wrapped_dek": "aGVsbG8gd29ybGQ=",
+            "new_dek_salt": "c2FsdHNhbHQ=",
+            "new_dek_params": "{\"m\":65536}"
+        }))
+        .await;
+
+    // Assert
+    assert_eq!(
+        response.status_code(),
+        StatusCode::OK,
+        "Expected 200 OK for valid key rotation"
+    );
+}
+
+#[tokio::test]
+async fn test_rotate_key_without_auth_returns_401() {
+    // Arrange
+    let server = common::spawn_test_app().await;
+
+    // Act
+    let response = server
+        .post("/v1/key/rotate")
+        .json(&json!({
+            "new_wrapped_dek": "aGVsbG8gd29ybGQ=",
+            "new_dek_salt": "c2FsdHNhbHQ=",
+            "new_dek_params": "{\"m\":65536}"
+        }))
+        .await;
+
+    // Assert
+    assert_eq!(
+        response.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "Expected 401 for missing auth token"
+    );
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["error"]["code"], "UNAUTHORIZED");
+}
+
+#[tokio::test]
+async fn test_rotate_key_with_missing_fields_returns_422() {
+    // Arrange
+    let server = common::spawn_test_app().await;
+    let token = common::create_test_user_and_login(&server, "rotate-missing").await;
+
+    // Act — missing new_dek_salt and new_dek_params
+    let response = server
+        .post("/v1/key/rotate")
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&json!({ "new_wrapped_dek": "aGVsbG8gd29ybGQ=" }))
+        .await;
+
+    // Assert
+    assert_eq!(
+        response.status_code(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "Expected 422 for missing required fields"
+    );
+}
+
+#[tokio::test]
+async fn test_rotate_key_then_login_returns_new_wrapped_dek() {
+    // Arrange
+    let server = common::spawn_test_app().await;
+    let email = common::unique_email("rotate-check");
+    server
+        .post("/auth/register")
+        .json(&common::register_payload(&email))
+        .await;
+
+    let login_resp = server
+        .post("/auth/login")
+        .json(&json!({ "email": email, "password": "testpassword123" }))
+        .await;
+    let login_body: serde_json::Value = login_resp.json();
+    let token = login_body["data"]["token"].as_str().unwrap().to_string();
+
+    let new_wrapped_dek = "bmV3d3JhcHBlZGRlaw==";
+    let new_dek_salt = "bmV3c2FsdA==";
+    let new_dek_params = "{\"m\":131072}";
+
+    // Act — rotate the key
+    let rotate_resp = server
+        .post("/v1/key/rotate")
+        .add_header(axum::http::header::AUTHORIZATION, common::bearer(&token))
+        .json(&json!({
+            "new_wrapped_dek": new_wrapped_dek,
+            "new_dek_salt": new_dek_salt,
+            "new_dek_params": new_dek_params
+        }))
+        .await;
+    assert_eq!(
+        rotate_resp.status_code(),
+        StatusCode::OK,
+        "Rotation must succeed"
+    );
+
+    // Assert — login again and verify DEK data was updated
+    let login2_resp = server
+        .post("/auth/login")
+        .json(&json!({ "email": email, "password": "testpassword123" }))
+        .await;
+    let body: serde_json::Value = login2_resp.json();
+    assert_eq!(
+        body["data"]["wrapped_dek"].as_str().unwrap(),
+        new_wrapped_dek,
+        "wrapped_dek must be updated after rotation"
+    );
+    assert_eq!(
+        body["data"]["dek_salt"].as_str().unwrap(),
+        new_dek_salt,
+        "dek_salt must be updated after rotation"
+    );
+    assert_eq!(
+        body["data"]["dek_params"].as_str().unwrap(),
+        new_dek_params,
+        "dek_params must be updated after rotation"
+    );
+}
+
 // ── Register tests ─────────────────────────────────────────────────────────
 
 #[tokio::test]

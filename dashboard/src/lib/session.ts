@@ -89,6 +89,22 @@ export function updateToken(token: string): void {
   notifyListeners();
 }
 
+/**
+ * Updates the wrapped DEK and related fields in the current session.
+ *
+ * Called after a successful key rotation so the in-memory session
+ * reflects the new wrapped DEK without requiring a full re-login.
+ */
+export function updateWrappedDek(
+  wrappedDek: string,
+  dekSalt: string,
+  dekParams: DekParams
+): void {
+  if (!currentSession) return;
+  currentSession = { ...currentSession, wrappedDek, dekSalt, dekParams };
+  notifyListeners();
+}
+
 /** Clears all session data (logout). */
 export function clearSession(): void {
   currentSession = null;
