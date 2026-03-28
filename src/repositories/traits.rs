@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    models::{card::Card, transaction::Transaction, user::User},
+    models::{card::Card, transaction::Transaction, user::User, user_config::UserConfig},
 };
 
 /// Data needed to create a new user row.
@@ -170,4 +170,33 @@ pub trait TransactionRepository: Send + Sync {
     /// - [`AppError::NotFound`] if no transaction with that ID exists.
     /// - [`AppError::InternalError`] on database error.
     async fn delete(&self, id: Uuid) -> Result<(), AppError>;
+}
+
+/// Data needed to upsert a user config blob.
+pub struct UpsertConfig {
+    pub user_id: Uuid,
+    pub config_type: String,
+    pub encrypted_data: Vec<u8>,
+    pub iv: Vec<u8>,
+    pub auth_tag: Vec<u8>,
+}
+
+/// Persistence operations for the `user_config` table.
+#[async_trait]
+pub trait UserConfigRepository: Send + Sync {
+    /// Fetches the config blob for a user and config type.
+    ///
+    /// # Errors
+    /// - [`AppError::NotFound`] if no config exists for that type.
+    /// - [`AppError::InternalError`] on database error.
+    async fn find(&self, user_id: Uuid, config_type: &str) -> Result<UserConfig, AppError>;
+
+    /// Inserts or replaces the config blob for a user and config type.
+    ///
+    /// Uses `ON CONFLICT (user_id, config_type) DO UPDATE` so the same
+    /// config type is always a single row per user.
+    ///
+    /// # Errors
+    /// - [`AppError::InternalError`] on database error.
+    async fn upsert(&self, data: UpsertConfig) -> Result<UserConfig, AppError>;
 }

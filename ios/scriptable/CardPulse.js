@@ -21,6 +21,8 @@ const CONFIG = {
   keychainDekKey: "cardpulse_dek",
   keychainCardMapKey: "cardpulse_card_map",
   keychainDefaultCardIdKey: "cardpulse_default_card_id",
+  // Cached category overrides (merchant→category map from server config blob)
+  keychainOverridesKey: "cardpulse_category_overrides",
 
   // Deduplication: ignore duplicate SMS received within this window (seconds)
   deduplicationWindowSecs: 30,
@@ -102,8 +104,20 @@ async function main() {
     return;
   }
 
-  // Auto-categorize based on merchant name keyword matching
-  const detectedCategory = autoCategory(parsed.merchant);
+  // Load category overrides (learned from user corrections in the dashboard).
+  // Overrides are fetched from the server and cached in Keychain to avoid
+  // a network round-trip on every SMS. The cache is refreshed each run.
+  const categoryOverrides = await loadCategoryOverrides(token, dekBase64);
+
+  // Resolve category: learned overrides take priority over keyword dictionary
+  const overrideCategory = lookupCategoryOverride(categoryOverrides, parsed.merchant);
+  const keywordCategory = overrideCategory === null ? autoCategory(parsed.merchant) : null;
+  const detectedCategory = overrideCategory ?? keywordCategory;
+  const categorySource = overrideCategory !== null
+    ? "auto_learned"
+    : keywordCategory !== null
+      ? "auto_keyword"
+      : null;
 
   // Build the plaintext JSON to encrypt
   const plaintextPayload = {
@@ -119,9 +133,9 @@ async function main() {
   };
 
   // Record the auto-categorization source so the dashboard can distinguish
-  // keyword-matched categories from manually set ones
-  if (detectedCategory) {
-    plaintextPayload.category_source = "auto_keyword";
+  // keyword-matched and override-matched categories from manually set ones
+  if (categorySource) {
+    plaintextPayload.category_source = categorySource;
   }
 
   const plaintext = JSON.stringify(plaintextPayload);
@@ -869,6 +883,111 @@ function autoCategory(merchant) {
     }
   }
   return null;
+}
+
+// ─── Category Overrides ──────────────────────────────────────────────────────
+
+/**
+ * Fetches the category overrides config blob from the server, decrypts it,
+ * and caches the result in Keychain.
+ *
+ * Returns a merchant→category map (keys normalized to uppercase).
+ * Returns an empty object if no overrides are stored or on any error.
+ *
+ * @param {string} token - JWT access token
+ * @param {string} dekBase64 - Base64-encoded DEK from Keychain
+ * @returns {Promise<Record<string, string>>}
+ */
+async function loadCategoryOverrides(token, dekBase64) {
+  // Try fetching from the server (overrides may have been updated from the dashboard)
+  try {
+    const req = new Request(`${CONFIG.apiBaseUrl}/v1/config/category_overrides`);
+    req.headers = { Authorization: `Bearer ${token}` };
+    const response = await req.loadJSON();
+
+    if (req.response.statusCode === 200 && response.data) {
+      const config = response.data;
+      const dek = Data.fromBase64String(dekBase64);
+      const plaintext = await decryptAesGcm(config.encrypted_data, config.iv, config.auth_tag, dek);
+      const overrides = JSON.parse(plaintext);
+
+      // Cache the decrypted overrides for offline use
+      Keychain.set(CONFIG.keychainOverridesKey, JSON.stringify(overrides));
+      return overrides;
+    }
+
+    // 404 means no overrides saved yet — return empty map
+    if (req.response.statusCode === 404) {
+      return {};
+    }
+  } catch (error) {
+    console.log(`Could not fetch overrides from server: ${error.message}. Using cached value.`);
+  }
+
+  // Fall back to cached overrides from previous run
+  const cached = Keychain.get(CONFIG.keychainOverridesKey);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+/**
+ * Looks up a merchant in the override map (case-insensitive).
+ *
+ * Returns the overridden category string, or null if no override exists.
+ *
+ * @param {Record<string, string>} overrides - Merchant→category map
+ * @param {string} merchant - Merchant name to look up
+ * @returns {string|null}
+ */
+function lookupCategoryOverride(overrides, merchant) {
+  if (!overrides || typeof overrides !== "object") return null;
+  return overrides[merchant.toUpperCase()] ?? null;
+}
+
+/**
+ * Decrypts AES-256-GCM ciphertext using the DEK.
+ *
+ * Input fields are base64-encoded. The auth tag is concatenated to the
+ * ciphertext before decryption (Web Crypto API convention).
+ *
+ * @param {string} ciphertextBase64 - Base64-encoded ciphertext (without auth tag)
+ * @param {string} ivBase64 - Base64-encoded 12-byte IV
+ * @param {string} authTagBase64 - Base64-encoded 16-byte auth tag
+ * @param {Data} dekData - DEK as a Scriptable Data object
+ * @returns {Promise<string>} - Decrypted UTF-8 string
+ */
+async function decryptAesGcm(ciphertextBase64, ivBase64, authTagBase64, dekData) {
+  const ciphertext = Data.fromBase64String(ciphertextBase64).getBytes();
+  const iv = Data.fromBase64String(ivBase64).getBytes();
+  const authTag = Data.fromBase64String(authTagBase64).getBytes();
+
+  // Web Crypto expects ciphertext + auth tag concatenated
+  const combined = new Uint8Array(ciphertext.length + authTag.length);
+  combined.set(ciphertext, 0);
+  combined.set(authTag, ciphertext.length);
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    dekData.getBytes(),
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv, tagLength: 128 },
+    key,
+    combined
+  );
+
+  return new TextDecoder().decode(decrypted);
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────

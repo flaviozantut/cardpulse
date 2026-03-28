@@ -9,8 +9,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listCards, listTransactions, updateTransaction } from "../lib/api";
-import { decrypt } from "../lib/crypto";
 import { decryptCard, formatCardLabel } from "../lib/card-data";
+import { decryptTransaction } from "../lib/transaction-data";
 import { filterTransactions } from "../lib/filters";
 import {
   sortByDateDescending,
@@ -23,69 +23,37 @@ import {
   buildCategoryPayload,
   extractUniqueCategories,
 } from "../lib/categories";
+import { fetchOverrides, saveOverrides, addOverride } from "../lib/overrides";
+import type { CategoryOverrides } from "../lib/overrides";
 import { useAuth } from "../hooks/useAuth";
 import { useFilters } from "../hooks/useFilters";
 import { FilterBar } from "../components/FilterBar";
 import { SpendingCharts } from "../components/SpendingCharts";
 import { CategoryEditor } from "../components/CategoryEditor";
-import type { Transaction } from "../types/api";
 import type { DecryptedTransaction } from "../types/dashboard";
 
-/** Attempts to decrypt a transaction's encrypted_data and parse it. */
-async function decryptTransaction(
-  tx: Transaction,
-  dek: Uint8Array
-): Promise<DecryptedTransaction> {
-  try {
-    const plaintext = await decrypt(tx.encrypted_data, tx.iv, tx.auth_tag, dek);
+/** Hook that fetches and decrypts the category overrides config blob. */
+function useCategoryOverrides(): {
+  overrides: CategoryOverrides;
+  isLoading: boolean;
+} {
+  const { token, dek } = useAuth();
 
-    // Try to parse as JSON first (structured data from iOS client)
-    try {
-      const parsed = JSON.parse(plaintext);
-      return {
-        id: tx.id,
-        card_id: tx.card_id,
-        timestamp_bucket: tx.timestamp_bucket,
-        created_at: tx.created_at,
-        merchant: parsed.merchant ?? parsed.name ?? plaintext,
-        amount: parsed.amount ?? 0,
-        category: parsed.category ?? "uncategorized",
-        description: plaintext,
-      };
-    } catch {
-      // Plaintext is not JSON — treat as simple description string
-      const amountMatch = plaintext.match(/R\$\s*([\d.,]+)/);
-      const amount = amountMatch
-        ? parseFloat(amountMatch[1].replace(".", "").replace(",", "."))
-        : 0;
+  const query = useQuery({
+    queryKey: ["config:category_overrides"],
+    queryFn: () => fetchOverrides(token!, dek!),
+    enabled: !!token && !!dek,
+    staleTime: 5 * 60 * 1000,
+  });
 
-      return {
-        id: tx.id,
-        card_id: tx.card_id,
-        timestamp_bucket: tx.timestamp_bucket,
-        created_at: tx.created_at,
-        merchant: plaintext.replace(/R\$\s*[\d.,]+/, "").trim() || plaintext,
-        amount,
-        category: "uncategorized",
-        description: plaintext,
-      };
-    }
-  } catch {
-    return {
-      id: tx.id,
-      card_id: tx.card_id,
-      timestamp_bucket: tx.timestamp_bucket,
-      created_at: tx.created_at,
-      merchant: "[Decryption failed]",
-      amount: 0,
-      category: "unknown",
-      description: "[Unable to decrypt]",
-    };
-  }
+  return {
+    overrides: query.data ?? {},
+    isLoading: query.isLoading,
+  };
 }
 
 /** Hook that fetches and decrypts all transactions. */
-function useDecryptedTransactions() {
+function useDecryptedTransactions(overrides: CategoryOverrides) {
   const { token, dek } = useAuth();
 
   const transactionsQuery = useQuery({
@@ -95,11 +63,15 @@ function useDecryptedTransactions() {
   });
 
   const decryptedQuery = useQuery({
-    queryKey: ["transactions:decrypted", transactionsQuery.data?.length],
+    queryKey: [
+      "transactions:decrypted",
+      transactionsQuery.data?.length,
+      Object.keys(overrides).length,
+    ],
     queryFn: async () => {
       if (!transactionsQuery.data || !dek) return [];
       return Promise.all(
-        transactionsQuery.data.map((tx) => decryptTransaction(tx, dek))
+        transactionsQuery.data.map((tx) => decryptTransaction(tx, dek, overrides))
       );
     },
     enabled: !!transactionsQuery.data && !!dek,
@@ -125,9 +97,10 @@ function formatBRL(value: number): string {
  * Manages category update mutations for individual transactions.
  *
  * Handles re-encrypting the payload with the new category, PUTting
- * to the API, and invalidating queries to refresh the decrypted data.
+ * to the API, saving the merchant→category override, and invalidating
+ * queries to refresh the decrypted data.
  */
-function useCategoryUpdate() {
+function useCategoryUpdate(overrides: CategoryOverrides) {
   const { token, dek } = useAuth();
   const queryClient = useQueryClient();
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
@@ -153,8 +126,15 @@ function useCategoryUpdate() {
           timestamp_bucket: tx.timestamp_bucket,
         });
 
-        // Invalidate queries to re-fetch and re-decrypt
+        // Persist override so future transactions from this merchant are
+        // auto-categorized as "auto_learned"
+        const updatedOverrides = addOverride(overrides, tx.merchant, newCategory);
+        await saveOverrides(token, dek, updatedOverrides);
+
         await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+        await queryClient.invalidateQueries({
+          queryKey: ["config:category_overrides"],
+        });
       } catch (error) {
         console.error("Failed to update category:", error);
       } finally {
@@ -165,7 +145,7 @@ function useCategoryUpdate() {
         });
       }
     },
-    [token, dek, queryClient],
+    [token, dek, queryClient, overrides],
   );
 
   return { handleCategoryUpdate, savingIds };
@@ -209,10 +189,11 @@ export function DashboardPage() {
     return map;
   }, [decryptedCards.data]);
 
+  const { overrides } = useCategoryOverrides();
   const { data: allTransactions, isLoading, isError, error } =
-    useDecryptedTransactions();
+    useDecryptedTransactions(overrides);
 
-  const { handleCategoryUpdate, savingIds } = useCategoryUpdate();
+  const { handleCategoryUpdate, savingIds } = useCategoryUpdate(overrides);
 
   const categorySuggestions = useMemo(
     () => extractUniqueCategories(allTransactions),
@@ -380,6 +361,7 @@ export function DashboardPage() {
                         handleCategoryUpdate(tx, newCategory)
                       }
                       isSaving={savingIds.has(tx.id)}
+                      categorySource={tx.category_source}
                     />
                     {" · "}
                     <span className="text-gray-400">

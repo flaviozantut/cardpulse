@@ -6,4 +6,5 @@
 pub mod card_repo;
 pub mod traits;
 pub mod transaction_repo;
+pub mod user_config_repo;
 pub mod user_repo;

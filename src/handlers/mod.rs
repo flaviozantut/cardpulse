@@ -10,3 +10,4 @@ pub mod me;
 pub mod sync;
 pub mod test_blob;
 pub mod transactions;
+pub mod user_config;

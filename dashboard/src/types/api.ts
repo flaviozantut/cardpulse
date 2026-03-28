@@ -67,6 +67,23 @@ export interface UpdateTransactionRequest {
   timestamp_bucket: string;
 }
 
+/** Payload for upserting a user config blob. */
+export interface UpsertConfigRequest {
+  encrypted_data: string;
+  iv: string;
+  auth_tag: string;
+}
+
+/** User config blob as returned by the API (encrypted). */
+export interface UserConfig {
+  id: string;
+  config_type: string;
+  encrypted_data: string;
+  iv: string;
+  auth_tag: string;
+  updated_at: string;
+}
+
 /** Transaction as returned by the API (encrypted). */
 export interface Transaction {
   id: string;

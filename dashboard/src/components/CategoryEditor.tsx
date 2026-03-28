@@ -4,9 +4,15 @@
  * Renders the current category as a clickable label. On click, switches
  * to a combo input (free-text with datalist suggestions) for editing.
  * Saves on Enter/blur, cancels on Escape.
+ *
+ * When a `categorySource` prop is provided, a small indicator icon is shown
+ * next to the category badge to signal how the category was determined:
+ * - `auto_learned` — matched a user-taught override (brain icon)
+ * - `auto_keyword` — matched the keyword dictionary (wand icon)
  */
 
 import { useState, useRef, useEffect } from "react";
+import type { CategorySource } from "../types/dashboard";
 
 interface CategoryEditorProps {
   /** Current category value. */
@@ -17,6 +23,35 @@ interface CategoryEditorProps {
   onSave: (newCategory: string) => void;
   /** Whether a save is currently in progress. */
   isSaving?: boolean;
+  /** How the category was determined — shown as a confidence source badge. */
+  categorySource?: CategorySource;
+}
+
+/** Returns a tooltip and icon character for the category source. */
+function SourceBadge({ source }: { source: CategorySource }) {
+  if (source === "auto_learned") {
+    return (
+      <span
+        title="Category learned from your corrections"
+        className="ml-0.5 text-xs text-emerald-500"
+        aria-label="auto-learned"
+      >
+        ✦
+      </span>
+    );
+  }
+  if (source === "auto_keyword") {
+    return (
+      <span
+        title="Category matched by keyword dictionary"
+        className="ml-0.5 text-xs text-sky-400"
+        aria-label="auto-keyword"
+      >
+        ✧
+      </span>
+    );
+  }
+  return null;
 }
 
 export function CategoryEditor({
@@ -24,6 +59,7 @@ export function CategoryEditor({
   suggestions,
   onSave,
   isSaving = false,
+  categorySource,
 }: CategoryEditorProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(category);
@@ -118,6 +154,7 @@ export function CategoryEditor({
       data-testid="category-label"
     >
       {category}
+      {categorySource && <SourceBadge source={categorySource} />}
       <svg
         className="h-3 w-3 opacity-50"
         fill="none"
