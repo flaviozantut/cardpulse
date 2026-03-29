@@ -12,6 +12,7 @@ import type { CategorySource, DecryptedTransaction } from "../types/dashboard";
 import { autoCategory } from "./categoryRules";
 import { lookupOverride } from "./overrides";
 import type { CategoryOverrides } from "./overrides";
+import { fuzzyMatchCategory } from "./fuzzyCategory";
 
 /** Input data for creating an encrypted transaction. */
 export interface TransactionFormData {
@@ -26,8 +27,9 @@ export interface TransactionFormData {
  * Category resolution order (highest priority first):
  * 1. Explicit manual category stored in the payload (no source tag)
  * 2. Learned override from the merchant→category map (`auto_learned`)
- * 3. Keyword dictionary match (`auto_keyword`)
- * 4. Falls back to `"uncategorized"` (no source tag)
+ * 3. Fuzzy match against override keys for name variations (`auto_fuzzy`)
+ * 4. Keyword dictionary match (`auto_keyword`)
+ * 5. Falls back to `"uncategorized"` (no source tag)
  *
  * Tries to parse decrypted plaintext as JSON first (structured iOS data).
  * Falls back to plain-text parsing with R$ amount extraction.
@@ -68,13 +70,20 @@ export async function decryptTransaction(
           category = overrideMatch;
           category_source = "auto_learned";
         } else {
-          // Fall back to keyword dictionary
-          const keywordMatch = autoCategory(merchant);
-          if (keywordMatch) {
-            category = keywordMatch;
-            category_source = "auto_keyword";
+          // Fuzzy match against override keys for name variations
+          const fuzzyMatch = fuzzyMatchCategory(merchant, overrides);
+          if (fuzzyMatch) {
+            category = fuzzyMatch;
+            category_source = "auto_fuzzy";
           } else {
-            category = "uncategorized";
+            // Fall back to keyword dictionary
+            const keywordMatch = autoCategory(merchant);
+            if (keywordMatch) {
+              category = keywordMatch;
+              category_source = "auto_keyword";
+            } else {
+              category = "uncategorized";
+            }
           }
         }
       }
