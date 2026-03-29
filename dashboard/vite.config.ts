@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -21,5 +21,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    // Default to node; individual test files opt into jsdom via
+    // the `// @vitest-environment jsdom` annotation when they need DOM APIs.
   },
 });

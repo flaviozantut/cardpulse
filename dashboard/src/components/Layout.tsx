@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Outlet, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { RotateKeyModal } from "./RotateKeyModal";
+import { OfflineIndicator } from "./OfflineIndicator";
 
 export function Layout() {
   const { isAuthenticated, isUnlocked, logout } = useAuth();
@@ -9,6 +10,7 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <OfflineIndicator />
       <nav className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <Link to="/" className="text-xl font-semibold text-gray-900">
