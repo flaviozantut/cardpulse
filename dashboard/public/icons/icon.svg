@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="80" fill="#111827"/>
+  <rect x="80" y="160" width="352" height="220" rx="24" fill="none" stroke="#F59E0B" stroke-width="20"/>
+  <rect x="80" y="200" width="352" height="60" fill="#F59E0B"/>
+  <rect x="110" y="310" width="80" height="20" rx="10" fill="#F59E0B"/>
+  <rect x="210" y="310" width="50" height="20" rx="10" fill="#6B7280"/>
+  <!-- Pulse line -->
+  <polyline points="290,260 320,230 345,270 365,245 390,260" fill="none" stroke="#10B981" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

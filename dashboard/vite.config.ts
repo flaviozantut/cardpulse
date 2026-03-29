@@ -22,4 +22,8 @@ export default defineConfig({
       },
     },
   },
+  test: {
+    // Default to node; individual test files opt into jsdom via
+    // the `// @vitest-environment jsdom` annotation when they need DOM APIs.
+  },
 });

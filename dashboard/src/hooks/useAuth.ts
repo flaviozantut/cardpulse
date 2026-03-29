@@ -18,6 +18,7 @@ import {
   subscribe,
   updateToken as refreshStoredToken,
 } from "../lib/session";
+import { clearOfflineCache } from "../lib/offline-cache";
 
 /** Hook for authentication state. Returns session info and auth helpers. */
 export function useAuth() {
@@ -41,6 +42,8 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     clearSession();
+    // Clear cached plaintext data from IndexedDB on logout
+    clearOfflineCache().catch(() => {});
   }, []);
 
   return {
