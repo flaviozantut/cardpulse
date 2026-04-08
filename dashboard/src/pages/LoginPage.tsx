@@ -104,12 +104,12 @@ export function LoginPage() {
   if (step === "master-password") {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="mb-6 text-center">
-            <h1 className="text-2xl font-semibold text-gray-900">
+            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
               Unlock your data
             </h1>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
               Enter your master password to decrypt your cards and transactions.
             </p>
           </div>
@@ -118,7 +118,7 @@ export function LoginPage() {
             <div>
               <label
                 htmlFor="master-password"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
               >
                 Master Password
               </label>
@@ -129,13 +129,13 @@ export function LoginPage() {
                 autoFocus
                 value={masterPassword}
                 onChange={(e) => setMasterPassword(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
                 placeholder="Your encryption password"
               />
             </div>
 
             {error && (
-              <p className="rounded-md bg-red-50 p-2 text-sm text-red-600">
+              <p className="rounded-md bg-red-50 p-2 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-300">
                 {error}
               </p>
             )}
@@ -143,7 +143,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
               {loading ? "Decrypting..." : "Unlock"}
             </button>
@@ -155,7 +155,7 @@ export function LoginPage() {
                 setMasterPassword("");
                 setError(null);
               }}
-              className="w-full text-sm text-gray-500 hover:text-gray-700"
+              className="w-full text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
               Use a different account
             </button>
@@ -167,8 +167,8 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
-      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-6 text-center text-2xl font-semibold text-gray-900">
+      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <h1 className="mb-6 text-center text-2xl font-semibold text-gray-900 dark:text-gray-100">
           Sign in to CardPulse
         </h1>
 
@@ -176,7 +176,7 @@ export function LoginPage() {
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
             >
               Email
             </label>
@@ -186,7 +186,7 @@ export function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
               placeholder="you@example.com"
             />
           </div>
@@ -194,7 +194,7 @@ export function LoginPage() {
           <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
             >
               Password
             </label>
@@ -204,12 +204,12 @@ export function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
           </div>
 
           {error && (
-            <p className="rounded-md bg-red-50 p-2 text-sm text-red-600">
+            <p className="rounded-md bg-red-50 p-2 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-300">
               {error}
             </p>
           )}
@@ -217,7 +217,7 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
           >
             {loading ? "Signing in..." : "Sign in"}
           </button>

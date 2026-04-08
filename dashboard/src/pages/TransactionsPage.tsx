@@ -261,17 +261,17 @@ export function TransactionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
             Transactions
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Manage your transactions &middot; {transactions.length} total
           </p>
         </div>
         <button
           onClick={() => setShowForm(true)}
           disabled={showForm}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
         >
           Add transaction
         </button>
@@ -293,33 +293,33 @@ export function TransactionsPage() {
       )}
 
       {/* Transaction list */}
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-4 py-3">
-          <h2 className="text-lg font-medium text-gray-900">
+      <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">
             All transactions
           </h2>
         </div>
 
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">
+          <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
             Loading and decrypting...
           </p>
         ) : sorted.length === 0 ? (
-          <p className="p-4 text-center text-sm text-gray-500">
+          <p className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
             No transactions yet. Add your first transaction to get started.
           </p>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
             {sorted.map((tx) => (
               <li
                 key={tx.id}
                 className="flex items-center justify-between px-4 py-3"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-900">
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                     {tx.merchant}
                   </p>
-                  <p className="flex items-center gap-1 text-xs text-gray-500">
+                  <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                     {formatTransactionDate(tx.created_at)}
                     {" · "}
                     <CategoryEditor
@@ -332,7 +332,7 @@ export function TransactionsPage() {
                       categorySource={tx.category_source}
                     />
                     {" · "}
-                    <span className="text-gray-400">
+                    <span className="text-gray-400 dark:text-gray-500">
                       {cardLabels.get(tx.card_id) ??
                         `${tx.card_id.slice(0, 8)}...`}
                     </span>
@@ -340,13 +340,15 @@ export function TransactionsPage() {
                 </div>
 
                 <div className="ml-4 flex items-center gap-3">
-                  <span className="whitespace-nowrap text-sm font-semibold text-gray-900">
+                  <span className="whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-gray-100">
                     {formatBRL(tx.amount)}
                   </span>
 
                   {deleteConfirmId === tx.id ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-red-600">Delete?</span>
+                      <span className="text-xs text-red-600 dark:text-red-400">
+                        Delete?
+                      </span>
                       <button
                         onClick={() => deleteMutation.mutate(tx.id)}
                         disabled={deleteMutation.isPending}
@@ -356,7 +358,7 @@ export function TransactionsPage() {
                       </button>
                       <button
                         onClick={() => setDeleteConfirmId(null)}
-                        className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
+                        className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                       >
                         No
                       </button>
@@ -364,7 +366,7 @@ export function TransactionsPage() {
                   ) : (
                     <button
                       onClick={() => setDeleteConfirmId(tx.id)}
-                      className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                      className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
                     >
                       Delete
                     </button>
@@ -377,7 +379,7 @@ export function TransactionsPage() {
       </div>
 
       {isError && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-red-600 dark:text-red-400">
           Failed to load transactions: {error?.message}
         </p>
       )}
@@ -428,16 +430,16 @@ function AddTransactionForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4"
+      className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/40"
     >
-      <h3 className="text-sm font-medium text-gray-900">
+      <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
         Add new transaction
       </h3>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {/* Card selector */}
         <div>
-          <label htmlFor="tx-card" className="block text-xs text-gray-600">
+          <label htmlFor="tx-card" className="block text-xs text-gray-600 dark:text-gray-300">
             Card *
           </label>
           <select
@@ -445,7 +447,7 @@ function AddTransactionForm({
             value={cardId}
             onChange={(e) => setCardId(e.target.value)}
             required
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           >
             {cards.length === 0 && <option value="">No cards available</option>}
             {cards.map((c) => (
@@ -458,7 +460,7 @@ function AddTransactionForm({
 
         {/* Merchant */}
         <div>
-          <label htmlFor="tx-merchant" className="block text-xs text-gray-600">
+          <label htmlFor="tx-merchant" className="block text-xs text-gray-600 dark:text-gray-300">
             Merchant *
           </label>
           <input
@@ -468,13 +470,13 @@ function AddTransactionForm({
             onChange={(e) => setMerchant(e.target.value)}
             placeholder="e.g. Shell"
             required
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
 
         {/* Amount */}
         <div>
-          <label htmlFor="tx-amount" className="block text-xs text-gray-600">
+          <label htmlFor="tx-amount" className="block text-xs text-gray-600 dark:text-gray-300">
             Amount (R$) *
           </label>
           <input
@@ -486,13 +488,13 @@ function AddTransactionForm({
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             required
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
 
         {/* Category */}
         <div>
-          <label htmlFor="tx-category" className="block text-xs text-gray-600">
+          <label htmlFor="tx-category" className="block text-xs text-gray-600 dark:text-gray-300">
             Category
           </label>
           <input
@@ -502,7 +504,7 @@ function AddTransactionForm({
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             placeholder="e.g. food"
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
           <datalist id="tx-category-suggestions">
             {categorySuggestions.map((s) => (
@@ -513,7 +515,7 @@ function AddTransactionForm({
 
         {/* Month bucket */}
         <div>
-          <label htmlFor="tx-bucket" className="block text-xs text-gray-600">
+          <label htmlFor="tx-bucket" className="block text-xs text-gray-600 dark:text-gray-300">
             Month
           </label>
           <input
@@ -521,12 +523,12 @@ function AddTransactionForm({
             type="month"
             value={bucket}
             onChange={(e) => setBucket(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
       </div>
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="flex gap-2">
         <button
@@ -534,14 +536,14 @@ function AddTransactionForm({
           disabled={
             isSubmitting || !merchant.trim() || !amount || !cardId
           }
-          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
         >
           {isSubmitting ? "Encrypting & saving..." : "Save transaction"}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md bg-gray-100 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-200"
+          className="rounded-md bg-gray-100 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         >
           Cancel
         </button>

@@ -1,7 +1,10 @@
 @import "tailwindcss";
 
+/* Tailwind v4 dark mode opt-in via the `dark` class on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-gray-50 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100;
   font-family:
     Inter,
     system-ui,

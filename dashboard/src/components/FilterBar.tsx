@@ -43,13 +43,13 @@ export function FilterBar({
   const cardIds = uniqueValues(transactions, "card_id");
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
       <div className="flex flex-wrap items-end gap-3">
         {/* Search */}
         <div className="min-w-[200px] flex-1">
           <label
             htmlFor="search"
-            className="block text-xs font-medium text-gray-500"
+            className="block text-xs font-medium text-gray-500 dark:text-gray-400"
           >
             Search
           </label>
@@ -59,7 +59,7 @@ export function FilterBar({
             value={filters.search ?? ""}
             onChange={(e) => onFilterChange("search", e.target.value || undefined)}
             placeholder="Merchant name..."
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
 
@@ -67,7 +67,7 @@ export function FilterBar({
         <div className="min-w-[130px]">
           <label
             htmlFor="month"
-            className="block text-xs font-medium text-gray-500"
+            className="block text-xs font-medium text-gray-500 dark:text-gray-400"
           >
             Month
           </label>
@@ -75,7 +75,7 @@ export function FilterBar({
             id="month"
             value={filters.month ?? ""}
             onChange={(e) => onFilterChange("month", e.target.value || undefined)}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           >
             <option value="">All months</option>
             {months.map((m) => (
@@ -90,7 +90,7 @@ export function FilterBar({
         <div className="min-w-[130px]">
           <label
             htmlFor="card"
-            className="block text-xs font-medium text-gray-500"
+            className="block text-xs font-medium text-gray-500 dark:text-gray-400"
           >
             Card
           </label>
@@ -100,7 +100,7 @@ export function FilterBar({
             onChange={(e) =>
               onFilterChange("cardId", e.target.value || undefined)
             }
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           >
             <option value="">All cards</option>
             {cardIds.map((c) => (
@@ -115,7 +115,7 @@ export function FilterBar({
         <div className="min-w-[130px]">
           <label
             htmlFor="category"
-            className="block text-xs font-medium text-gray-500"
+            className="block text-xs font-medium text-gray-500 dark:text-gray-400"
           >
             Category
           </label>
@@ -125,7 +125,7 @@ export function FilterBar({
             onChange={(e) =>
               onFilterChange("category", e.target.value || undefined)
             }
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           >
             <option value="">All categories</option>
             {categories.map((c) => (
@@ -140,7 +140,7 @@ export function FilterBar({
         <div className="min-w-[90px]">
           <label
             htmlFor="amountMin"
-            className="block text-xs font-medium text-gray-500"
+            className="block text-xs font-medium text-gray-500 dark:text-gray-400"
           >
             Min R$
           </label>
@@ -157,14 +157,14 @@ export function FilterBar({
               )
             }
             placeholder="0"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
 
         <div className="min-w-[90px]">
           <label
             htmlFor="amountMax"
-            className="block text-xs font-medium text-gray-500"
+            className="block text-xs font-medium text-gray-500 dark:text-gray-400"
           >
             Max R$
           </label>
@@ -181,7 +181,7 @@ export function FilterBar({
               )
             }
             placeholder="999"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
 
@@ -189,7 +189,7 @@ export function FilterBar({
         {hasActiveFilters && (
           <button
             onClick={onClear}
-            className="rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200"
+            className="rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           >
             Clear all
           </button>

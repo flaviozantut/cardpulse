@@ -230,8 +230,10 @@ export function DashboardPage() {
       {/* Header with month navigation */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+            Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             All data is decrypted client-side &middot;{" "}
             {filtered.length} transaction{filtered.length !== 1 ? "s" : ""}
           </p>
@@ -241,7 +243,7 @@ export function DashboardPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={goToPreviousMonth}
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
             aria-label="Previous month"
           >
             &larr;
@@ -250,15 +252,15 @@ export function DashboardPage() {
             onClick={goToCurrentMonth}
             className={`rounded-md px-3 py-1 text-sm font-medium ${
               isCurrentMonth
-                ? "bg-blue-600 text-white"
-                : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                ? "bg-blue-600 text-white dark:bg-blue-500"
+                : "border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
             }`}
           >
             {formatBucket(activeMonth)}
           </button>
           <button
             onClick={goToNextMonth}
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
             aria-label="Next month"
           >
             &rarr;
@@ -308,12 +310,12 @@ export function DashboardPage() {
       />
 
       {/* Transaction list */}
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-4 py-3">
-          <h2 className="text-lg font-medium text-gray-900">
+      <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">
             Transactions
             {hasActiveFilters && (
-              <span className="ml-2 text-sm font-normal text-gray-500">
+              <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                 ({filtered.length} of {allTransactions.length})
               </span>
             )}
@@ -321,12 +323,12 @@ export function DashboardPage() {
         </div>
 
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">
+          <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
             Loading and decrypting...
           </p>
         ) : filtered.length === 0 ? (
           <div className="p-4 text-center">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               {hasActiveFilters
                 ? "No transactions match your filters."
                 : "No transactions yet."}
@@ -334,24 +336,24 @@ export function DashboardPage() {
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+                className="mt-2 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
               >
                 Clear all filters
               </button>
             )}
           </div>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
             {filtered.map((tx) => (
               <li
                 key={tx.id}
                 className="flex items-center justify-between px-4 py-3"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-900">
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                     {tx.merchant}
                   </p>
-                  <p className="flex items-center gap-1 text-xs text-gray-500">
+                  <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                     {formatTransactionDate(tx.created_at)}
                     {" · "}
                     <CategoryEditor
@@ -364,12 +366,12 @@ export function DashboardPage() {
                       categorySource={tx.category_source}
                     />
                     {" · "}
-                    <span className="text-gray-400">
+                    <span className="text-gray-400 dark:text-gray-500">
                       {cardLabels.get(tx.card_id) ?? `${tx.card_id.slice(0, 8)}...`}
                     </span>
                   </p>
                 </div>
-                <span className="ml-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                <span className="ml-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-gray-100">
                   {formatBRL(tx.amount)}
                 </span>
               </li>
@@ -379,7 +381,7 @@ export function DashboardPage() {
       </div>
 
       {isError && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-red-600 dark:text-red-400">
           Failed to load transactions: {error?.message}
         </p>
       )}
@@ -397,9 +399,9 @@ function StatCard({
   loading: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+      <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">
         {loading ? "..." : value}
       </p>
     </div>
