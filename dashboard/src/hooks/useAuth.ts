@@ -50,6 +50,7 @@ export function useAuth() {
     session,
     token: session?.token ?? null,
     dek: session?.dek ?? null,
+    email: session?.email ?? null,
     isAuthenticated: checkAuth(),
     isUnlocked: checkUnlocked(),
     login,

@@ -16,6 +16,14 @@ export interface Session {
   readonly dekSalt: string;
   readonly dekParams: DekParams;
   readonly dek: Uint8Array | null;
+  /**
+   * Account email captured at login time.
+   *
+   * Stored only in memory (cleared on refresh / logout) and exposed
+   * exclusively for UX features such as the multi-device pair QR code.
+   * Never persisted alongside any secret material.
+   */
+  readonly email: string | null;
 }
 
 /** Input for creating a new session after login. */
@@ -25,6 +33,7 @@ export interface SessionInput {
   dekSalt: string;
   dekParams: DekParams;
   dek?: Uint8Array;
+  email?: string;
 }
 
 // ── Private state ────────────────────────────────────────────────────────────
@@ -71,6 +80,7 @@ export function setSession(input: SessionInput): void {
     dekSalt: input.dekSalt,
     dekParams: input.dekParams,
     dek: input.dek ?? null,
+    email: input.email ?? null,
   };
   notifyListeners();
 }
