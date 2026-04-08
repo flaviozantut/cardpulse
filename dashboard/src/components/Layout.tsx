@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Outlet, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { RotateKeyModal } from "./RotateKeyModal";
+import { DeviceSyncModal } from "./DeviceSyncModal";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { ThemeToggle } from "./ThemeToggle";
 
 export function Layout() {
   const { isAuthenticated, isUnlocked, logout } = useAuth();
   const [showRotateModal, setShowRotateModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -43,12 +45,20 @@ export function Layout() {
                   Cards
                 </Link>
                 {isUnlocked && (
-                  <button
-                    onClick={() => setShowRotateModal(true)}
-                    className="rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                  >
-                    Change password
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowSyncModal(true)}
+                      className="rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      Sync device
+                    </button>
+                    <button
+                      onClick={() => setShowRotateModal(true)}
+                      className="rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      Change password
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={logout}
@@ -69,6 +79,10 @@ export function Layout() {
 
       {showRotateModal && (
         <RotateKeyModal onClose={() => setShowRotateModal(false)} />
+      )}
+
+      {showSyncModal && (
+        <DeviceSyncModal onClose={() => setShowSyncModal(false)} />
       )}
     </div>
   );
