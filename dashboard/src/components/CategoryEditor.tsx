@@ -108,10 +108,10 @@ export function CategoryEditor({
   if (isSaving) {
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs text-gray-400"
+        className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"
         data-testid="category-saving"
       >
-        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500 dark:border-gray-600 dark:border-t-blue-400" />
         Saving...
       </span>
     );
@@ -128,7 +128,7 @@ export function CategoryEditor({
           onChange={(e) => setValue(e.target.value)}
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
-          className="w-28 rounded border border-blue-400 px-1.5 py-0.5 text-xs text-gray-900 shadow-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+          className="w-28 rounded border border-blue-400 px-1.5 py-0.5 text-xs text-gray-900 shadow-sm focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-blue-500 dark:bg-gray-800 dark:text-gray-100"
           placeholder="Category..."
           data-testid="category-input"
         />
@@ -147,8 +147,8 @@ export function CategoryEditor({
       onClick={() => setIsEditing(true)}
       className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs transition-colors ${
         category === "uncategorized"
-          ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
-          : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+          ? "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/50"
+          : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50"
       }`}
       title="Click to change category"
       data-testid="category-label"

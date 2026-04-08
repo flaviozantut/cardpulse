@@ -21,6 +21,27 @@
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png" />
+
+    <!--
+      Prevent FOUC by applying the dark class before the React app boots.
+      Mirrors the resolution logic in src/hooks/useTheme.ts.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("cardpulse:theme");
+          var mode = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+          var isDark =
+            mode === "dark" ||
+            (mode === "system" &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (isDark) document.documentElement.classList.add("dark");
+        } catch (e) {
+          /* ignore — defaults to light */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
