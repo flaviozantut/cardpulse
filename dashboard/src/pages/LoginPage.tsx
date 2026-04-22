@@ -15,13 +15,26 @@ import { deriveKey, unwrapDek, CryptoError } from "../lib/crypto";
 import type { DekParams } from "../lib/crypto";
 import { useAuth } from "../hooks/useAuth";
 import type { LoginResponse } from "../types/api";
+import { parsePairUrl } from "../lib/deviceSync";
 
 /** State for the two-step login flow. */
 type LoginStep = "credentials" | "master-password";
 
+/**
+ * Reads an optional pair payload from the current URL so a freshly-paired
+ * device can pre-fill the email field. Returns an empty string when there
+ * is no payload, the payload is malformed, or the page is rendered in a
+ * non-browser environment (e.g. SSR / tests).
+ */
+function readPairedEmail(): string {
+  if (typeof window === "undefined") return "";
+  const payload = parsePairUrl(window.location.href);
+  return payload?.email ?? "";
+}
+
 export function LoginPage() {
   const [step, setStep] = useState<LoginStep>("credentials");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => readPairedEmail());
   const [password, setPassword] = useState("");
   const [masterPassword, setMasterPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,12 +59,15 @@ export function LoginPage() {
           ? JSON.parse(data.dek_params)
           : data.dek_params;
 
-      // Store session (JWT + wrapped DEK data) in memory
+      // Store session (JWT + wrapped DEK data + email) in memory.
+      // Email is captured here so the multi-device pair QR can later
+      // pre-fill it on a second device — never persisted to disk.
       login({
         token: data.token,
         wrappedDek: data.wrapped_dek,
         dekSalt: data.dek_salt,
         dekParams,
+        email,
       });
 
       setLoginData(data);

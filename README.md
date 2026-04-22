@@ -22,6 +22,7 @@ CardPulse automatically captures credit card purchases from SMS notifications on
   - [Transactions](#transactions)
   - [Key Management](#key-management)
 - [Encryption Model](#encryption-model)
+- [Multi-Device Sync](#multi-device-sync)
 - [iOS Automation](#ios-automation)
 - [Testing](#testing)
 - [Deployment](#deployment)
@@ -489,6 +490,75 @@ flowchart TB
 ### Trade-offs
 
 Since the server cannot read data, all aggregation (totals, charts, category breakdowns) happens client-side after decryption. This is viable for personal use with hundreds of transactions per month. The `timestamp_bucket` field allows server-side filtering by month without decrypting everything.
+
+---
+
+## Multi-Device Sync
+
+CardPulse is designed to be used from any number of devices (multiple browsers, a laptop and a phone, an iPad, etc.) without ever sharing your master password or DEK over the network. Because the **wrapped DEK already lives on the server**, every device can derive the same encryption key locally given just two ingredients:
+
+1. Your account email
+2. Your master password
+
+The server returns the wrapped DEK on every login and the client unwraps it locally. No additional setup, transfer, or key escrow is required.
+
+### Why this is safe
+
+```mermaid
+flowchart LR
+    M["🔑 Master Password\n(in your head only)"]
+    S["📦 Wrapped DEK\n(on server, opaque)"]
+    M -->|"Argon2id"| K["Derived Key"]
+    K -->|"AES-GCM unwrap"| D["DEK"]
+    S --> D
+    D --> R["Decrypted data\n(client only)"]
+```
+
+The server stores the wrapped DEK but never sees the master password or the derived key, so it cannot unwrap it. Anyone who steals the database still has nothing without your password.
+
+### Adding a second device — Web dashboard
+
+There are two equivalent paths:
+
+**Manual login (no setup needed):**
+
+1. Open the dashboard URL on the new device
+2. Enter your email + server password
+3. Enter your master password to unlock — done
+
+**Pair via QR code (faster):**
+
+1. On a device that's already unlocked, click **Sync device** in the header
+2. A modal appears with a QR code containing your email + dashboard URL (never your password or DEK)
+3. Scan the QR with the new device's camera, or copy the link and open it manually
+4. The login form opens with the email pre-filled
+5. Enter your server password and master password to unlock
+
+Behind the scenes the QR encodes a `?pair=<base64url>` query parameter on the dashboard URL. The destination device decodes the payload, validates the schema and `http(s)` URL, and pre-fills the form. Malformed payloads are silently ignored — the user simply sees the normal login screen.
+
+### Adding a second iPhone — Scriptable
+
+The Scriptable script (`ios/scriptable/CardPulse.js`) supports the same flow:
+
+1. Install Scriptable + the CardPulse script on the second iPhone
+2. Run the script with `setup` as the input parameter
+3. Enter the API URL, your email, and your server password (Step 1/2)
+4. Enter your master password (Step 2/2) — Scriptable derives the DEK from the wrapped DEK fetched at login and stores both the JWT and the DEK in the iOS Keychain
+5. Run the script with `cards` to map your card last digits to UUIDs
+
+The wrapped DEK and `dek_params` returned by the API are identical for every device, so all your iPhones, browsers, and the dashboard end up with the exact same DEK without any direct device-to-device transfer.
+
+### Rotating your master password
+
+Rotating the master password (via the **Change password** modal) re-wraps the DEK with new credentials and updates the server copy. After rotation, every other device will need to log in again with the new password — the underlying DEK does not change, so all your existing encrypted data remains decryptable.
+
+### Security checklist
+
+- [x] Master password never sent to the server
+- [x] DEK never sent to the server in unwrapped form
+- [x] Pair QR contains only non-secret metadata (email + API URL)
+- [x] Pair payloads validated against a versioned schema and `http(s)` allow-list
+- [x] Sessions are memory-only — closing the tab forgets the DEK
 
 ---
 
