@@ -1,0 +1,44 @@
+# fly.toml — Fly.io deployment configuration for CardPulse API
+#
+# Deploy:  fly deploy
+# Logs:    fly logs
+# Status:  fly status
+# SSH:     fly ssh console
+
+app = "cardpulse-api"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile"
+  build-target = "production"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8080"
+  RUST_LOG = "info,cardpulse_api=debug"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 250
+    soft_limit = 200
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  protocol = "http"
+  timeout = "5s"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
