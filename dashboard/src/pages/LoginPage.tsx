@@ -10,6 +10,7 @@
 
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Lock, Mail, KeyRound, ChevronLeft, Zap } from "lucide-react";
 import { login as apiLogin } from "../lib/api";
 import { deriveKey, unwrapDek, CryptoError } from "../lib/crypto";
 import type { DekParams } from "../lib/crypto";
@@ -17,19 +18,55 @@ import { useAuth } from "../hooks/useAuth";
 import type { LoginResponse } from "../types/api";
 import { parsePairUrl } from "../lib/deviceSync";
 
-/** State for the two-step login flow. */
 type LoginStep = "credentials" | "master-password";
 
-/**
- * Reads an optional pair payload from the current URL so a freshly-paired
- * device can pre-fill the email field. Returns an empty string when there
- * is no payload, the payload is malformed, or the page is rendered in a
- * non-browser environment (e.g. SSR / tests).
- */
 function readPairedEmail(): string {
   if (typeof window === "undefined") return "";
   const payload = parsePairUrl(window.location.href);
   return payload?.email ?? "";
+}
+
+function InputField({
+  id,
+  label,
+  type,
+  value,
+  onChange,
+  placeholder,
+  icon: Icon,
+  autoFocus,
+}: {
+  id: string;
+  label: string;
+  type: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  icon: React.ElementType;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+        {label}
+      </label>
+      <div className="relative mt-1">
+        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+          <Icon size={16} className="text-slate-400" />
+        </div>
+        <input
+          id={id}
+          type={type}
+          required
+          autoFocus={autoFocus}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="block w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500 dark:focus:ring-indigo-900/40"
+        />
+      </div>
+    </div>
+  );
 }
 
 export function LoginPage() {
@@ -44,7 +81,6 @@ export function LoginPage() {
   const { login, unlock } = useAuth();
   const navigate = useNavigate();
 
-  /** Step 1: Authenticate with the API using email + server password. */
   async function handleCredentials(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -53,15 +89,11 @@ export function LoginPage() {
     try {
       const data = await apiLogin({ email, password });
 
-      // Parse dek_params from JSON string
       const dekParams: DekParams =
         typeof data.dek_params === "string"
           ? JSON.parse(data.dek_params)
           : data.dek_params;
 
-      // Store session (JWT + wrapped DEK data + email) in memory.
-      // Email is captured here so the multi-device pair QR can later
-      // pre-fill it on a second device — never persisted to disk.
       login({
         token: data.token,
         wrappedDek: data.wrapped_dek,
@@ -79,7 +111,6 @@ export function LoginPage() {
     }
   }
 
-  /** Step 2: Derive key from master password and unwrap DEK. */
   async function handleMasterPassword(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -93,17 +124,9 @@ export function LoginPage() {
           ? JSON.parse(loginData.dek_params)
           : loginData.dek_params;
 
-      // Derive key from master password + salt
-      const derivedKey = await deriveKey(
-        masterPassword,
-        loginData.dek_salt,
-        dekParams
-      );
-
-      // Unwrap the DEK
+      const derivedKey = await deriveKey(masterPassword, loginData.dek_salt, dekParams);
       const dek = await unwrapDek(loginData.wrapped_dek, derivedKey);
 
-      // Store DEK in memory and redirect
       unlock(dek);
       navigate("/", { replace: true });
     } catch (err) {
@@ -117,127 +140,105 @@ export function LoginPage() {
     }
   }
 
-  if (step === "master-password") {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="mb-6 text-center">
-            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-              Unlock your data
-            </h1>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Enter your master password to decrypt your cards and transactions.
-            </p>
-          </div>
-
-          <form onSubmit={handleMasterPassword} className="space-y-4">
-            <div>
-              <label
-                htmlFor="master-password"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                Master Password
-              </label>
-              <input
-                id="master-password"
-                type="password"
-                required
-                autoFocus
-                value={masterPassword}
-                onChange={(e) => setMasterPassword(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
-                placeholder="Your encryption password"
-              />
-            </div>
-
-            {error && (
-              <p className="rounded-md bg-red-50 p-2 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-300">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
-            >
-              {loading ? "Decrypting..." : "Unlock"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStep("credentials");
-                setMasterPassword("");
-                setError(null);
-              }}
-              className="w-full text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            >
-              Use a different account
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <h1 className="mb-6 text-center text-2xl font-semibold text-gray-900 dark:text-gray-100">
-          Sign in to CardPulse
-        </h1>
-
-        <form onSubmit={handleCredentials} className="space-y-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
-              placeholder="you@example.com"
-            />
+    <div className="flex min-h-[80vh] items-center justify-center">
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div className="mb-8 flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/40">
+            <Zap size={22} className="text-white" />
           </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
-            />
-          </div>
-
-          {error && (
-            <p className="rounded-md bg-red-50 p-2 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-300">
-              {error}
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">CardPulse</h1>
+            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+              {step === "credentials" ? "Sign in to your account" : "Unlock your data"}
             </p>
-          )}
+          </div>
+        </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
-          >
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
+        {/* Card */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          {step === "master-password" ? (
+            <form onSubmit={handleMasterPassword} className="space-y-4">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Enter your master password to decrypt your cards and transactions. It never leaves your device.
+              </p>
+
+              <InputField
+                id="master-password"
+                label="Master Password"
+                type="password"
+                value={masterPassword}
+                onChange={setMasterPassword}
+                placeholder="Your encryption password"
+                icon={KeyRound}
+                autoFocus
+              />
+
+              {error && (
+                <div className="rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 disabled:opacity-60"
+              >
+                {loading ? "Decrypting..." : "Unlock"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setStep("credentials"); setMasterPassword(""); setError(null); }}
+                className="flex w-full items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                <ChevronLeft size={14} />
+                Use a different account
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleCredentials} className="space-y-4">
+              <InputField
+                id="email"
+                label="Email"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                placeholder="you@example.com"
+                icon={Mail}
+              />
+
+              <InputField
+                id="password"
+                label="Password"
+                type="password"
+                value={password}
+                onChange={setPassword}
+                icon={Lock}
+              />
+
+              {error && (
+                <div className="rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 disabled:opacity-60"
+              >
+                {loading ? "Signing in..." : "Sign in"}
+              </button>
+            </form>
+          )}
+        </div>
+
+        <p className="mt-4 text-center text-xs text-slate-400 dark:text-slate-600">
+          End-to-end encrypted · Zero-knowledge
+        </p>
       </div>
     </div>
   );
