@@ -26,7 +26,8 @@ pgdata-test/
 # Dependencies
 Cargo.lock is tracked for binaries
 
-
 # Added by cargo
-
 /target
+
+# Claude worktrees
+.claude/worktrees/
