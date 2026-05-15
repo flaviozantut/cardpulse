@@ -91,7 +91,7 @@ export function ThemeToggle() {
       title={NEXT_LABEL[mode]}
       aria-label={NEXT_LABEL[mode]}
       data-testid="theme-toggle"
-      className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
     >
       {modeIcon(mode)}
       <span className="hidden sm:inline">{MODE_LABEL[mode]}</span>
